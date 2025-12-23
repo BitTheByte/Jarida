@@ -49,23 +49,27 @@ public class JaridaConnectionPanel extends JPanel {
     private final JButton stopButton;
     private final JLabel statusLabel;
     private final JButton startButton;
+    private final JButton savePathsButton;
 
     private final FridaController fridaController;
     private final Consumer<FridaSessionConfig> onApply;
     private final Consumer<FridaSessionConfig> onStart;
     private final Runnable onStop;
+    private final Consumer<FridaSessionConfig> onSavePaths;
 
     public JaridaConnectionPanel(FridaController fridaController,
                                  FridaSessionConfig initialConfig,
                                  String defaultPackage,
                                  Consumer<FridaSessionConfig> onApply,
                                  Consumer<FridaSessionConfig> onStart,
-                                 Runnable onStop) {
+                                 Runnable onStop,
+                                 Consumer<FridaSessionConfig> onSavePaths) {
         super(new BorderLayout());
         this.fridaController = fridaController;
         this.onApply = onApply;
         this.onStart = onStart;
         this.onStop = onStop;
+        this.onSavePaths = onSavePaths;
 
         deviceMode = new JComboBox<>(DeviceMode.values());
         deviceList = new JComboBox<>();
@@ -99,6 +103,8 @@ public class JaridaConnectionPanel extends JPanel {
         statusLabel = new JLabel("Status: Disconnected");
         startButton = new JButton("Open Connection");
         startButton.addActionListener(e -> startTracing());
+        savePathsButton = new JButton("Save Paths");
+        savePathsButton.addActionListener(e -> savePaths());
 
         applyInitial(initialConfig, defaultPackage);
 
@@ -324,6 +330,8 @@ public class JaridaConnectionPanel extends JPanel {
         panel.add(startButton, c);
         c.gridx = 2;
         panel.add(stopButton, c);
+        c.gridx = 3;
+        panel.add(savePathsButton, c);
 
         return panel;
     }
@@ -379,6 +387,17 @@ public class JaridaConnectionPanel extends JPanel {
         } else {
             statusArea.setText("Connection settings saved.");
         }
+    }
+
+    private void savePaths() {
+        FridaSessionConfig cfg = new FridaSessionConfig();
+        cfg.setAdbPath(adbPath.getText().trim());
+        cfg.setFridaPath(fridaPath.getText().trim());
+        cfg.setFridaPsPath(fridaPsPath.getText().trim());
+        if (onSavePaths != null) {
+            onSavePaths.accept(cfg);
+        }
+        statusArea.setText("Path configuration saved.");
     }
 
     private FridaSessionConfig buildConfig() {

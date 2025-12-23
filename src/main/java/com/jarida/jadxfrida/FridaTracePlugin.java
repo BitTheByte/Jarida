@@ -41,9 +41,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.io.IOException;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
+import java.util.prefs.Preferences;
 
 public class FridaTracePlugin implements JadxPlugin {
     private JadxPluginContext pluginContext;
@@ -66,6 +68,9 @@ public class FridaTracePlugin implements JadxPlugin {
     private FridaSessionConfig lastSessionConfig = new FridaSessionConfig();
     private ScriptOptions lastScriptOptions = new ScriptOptions();
     private FridaSessionConfig activeSessionConfig;
+    private String customScriptPaths = "";
+    private final java.util.Set<String> missingCustomScripts = new java.util.HashSet<>();
+    private static final Preferences PREFS = Preferences.userRoot().node("com.jarida.jadxfrida");
 
     @Override
     public JadxPluginInfo getPluginInfo() {
@@ -86,6 +91,8 @@ public class FridaTracePlugin implements JadxPlugin {
         context.registerOptions(pluginOptions);
         this.lastSessionConfig = pluginOptions.toSessionConfig();
         this.lastScriptOptions = pluginOptions.toScriptOptions();
+        this.customScriptPaths = pluginOptions.getCustomScriptPaths();
+        loadSavedPaths();
         if (guiContext != null) {
             initGui();
             guiContext.settings().setCustomSettingsGroup(
@@ -156,12 +163,15 @@ public class FridaTracePlugin implements JadxPlugin {
                     String pkg = PackageNameResolver.resolvePackageName(decompiler);
                     String version = getVersionString();
                     connectionPanel = new JaridaConnectionPanel(fridaController, lastSessionConfig, pkg,
-                            this::applyConnectionConfig, this::startSessionFromConnection, this::stopTrace);
-                    consoleNode = new FridaConsoleNode(this::removeHook, this::toggleHook, this::removeAllHooks, connectionPanel, version);
+                            this::applyConnectionConfig, this::startSessionFromConnection, this::stopTrace, this::savePathsConfig);
+                    consoleNode = new FridaConsoleNode(this::removeHook, this::toggleHook, this::removeAllHooks,
+                            connectionPanel, version, this::applyCustomScriptsFromConsole);
                 }
-                mainWindow.getTabsController().openTab(consoleNode);
+                jadx.gui.ui.tab.TabsController controller = mainWindow.getTabsController();
+                controller.openTab(consoleNode);
+                ContentPanel consolePanelRef = tabs.getTabByNode(consoleNode);
                 if (focus) {
-                    mainWindow.getTabsController().selectTab(consoleNode, true);
+                    selectConsoleTab(tabs, controller, consoleNode, consolePanelRef);
                 } else {
                     if (prevPanel != null && tabs.indexOfComponent(prevPanel) >= 0) {
                         tabs.setSelectedComponent(prevPanel);
@@ -178,6 +188,7 @@ public class FridaTracePlugin implements JadxPlugin {
                 if (consolePanel != null) {
                     consolePanel.setSessionActive(fridaController.isRunning());
                     consolePanel.setConnectionVisible(!fridaController.isRunning());
+                    consolePanel.setCustomScripts(customScriptPaths);
                 }
                 if (consolePanel != null && !pendingLogs.isEmpty()) {
                     for (String line : pendingLogs) {
@@ -210,6 +221,30 @@ public class FridaTracePlugin implements JadxPlugin {
         }
         if (tabs.getTabComponentAt(idx) == null) {
             tabs.setTabComponentAt(idx, new TabComponent(tabs, panel));
+        }
+    }
+
+    private void selectConsoleTab(TabbedPane tabs, Object controller, JNode node, ContentPanel panel) {
+        if (tabs != null && panel != null) {
+            try {
+                tabs.setSelectedComponent(panel);
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+        if (controller == null || node == null) {
+            return;
+        }
+        try {
+            java.lang.reflect.Method method = controller.getClass().getMethod("selectTab", JNode.class, boolean.class);
+            method.invoke(controller, node, true);
+            return;
+        } catch (Exception ignored) {
+        }
+        try {
+            java.lang.reflect.Method method = controller.getClass().getMethod("selectTab", JNode.class);
+            method.invoke(controller, node);
+        } catch (Exception ignored) {
         }
     }
 
@@ -269,7 +304,7 @@ public class FridaTracePlugin implements JadxPlugin {
         }
         HookSpec spec = new HookSpec(target, lastScriptOptions, patchRule, dialog.getExtraScript(), hookKey);
         hookSpecs.put(hookKey, spec);
-        String script = HookScriptGenerator.generateCombined(getActiveSpecs());
+        String script = buildCombinedScript();
         boolean canReuseNow = fridaController.isRunning()
                 && activeSessionConfig != null
                 && fixedConfig != null
@@ -582,7 +617,7 @@ public class FridaTracePlugin implements JadxPlugin {
             }
         } catch (Exception ignored) {
         }
-        return "0.1.0";
+        return "unknown";
     }
 
     private void showError(String message) {
@@ -613,6 +648,72 @@ public class FridaTracePlugin implements JadxPlugin {
                 pluginOptions.isTemplateAppend(), pluginOptions.getTemplateName(), pluginOptions.getTemplateContent());
     }
 
+    private void applyCustomScriptsFromConsole(String paths) {
+        customScriptPaths = paths == null ? "" : paths;
+        pluginOptions.setCustomScripts(customScriptPaths);
+        String script = buildCombinedScript();
+        if (consolePanel != null) {
+            consolePanel.setScript(script);
+        } else {
+            pendingScript = script;
+        }
+        if (fridaController.isRunning()) {
+            try {
+                fridaController.updateSessionScript(script, this::appendLog);
+            } catch (IOException e) {
+                appendLog("Failed to update Jarida session: " + e.getMessage());
+            }
+        }
+    }
+
+    private void savePathsConfig(FridaSessionConfig cfg) {
+        if (cfg == null) {
+            return;
+        }
+        String adb = cfg.getAdbPath();
+        String frida = cfg.getFridaPath();
+        String fridaPs = cfg.getFridaPsPath();
+        try {
+            if (adb != null && !adb.trim().isEmpty()) {
+                PREFS.put("path.adb", adb.trim());
+                lastSessionConfig.setAdbPath(adb.trim());
+            }
+            if (frida != null && !frida.trim().isEmpty()) {
+                PREFS.put("path.frida", frida.trim());
+                lastSessionConfig.setFridaPath(frida.trim());
+            }
+            if (fridaPs != null && !fridaPs.trim().isEmpty()) {
+                PREFS.put("path.fridaPs", fridaPs.trim());
+                lastSessionConfig.setFridaPsPath(fridaPs.trim());
+            }
+        } catch (Exception ignored) {
+        }
+        pluginOptions.updateFrom(lastSessionConfig, lastScriptOptions,
+                pluginOptions.isTemplateAppend(), pluginOptions.getTemplateName(), pluginOptions.getTemplateContent());
+    }
+
+    private void loadSavedPaths() {
+        try {
+            String adb = PREFS.get("path.adb", null);
+            String frida = PREFS.get("path.frida", null);
+            String fridaPs = PREFS.get("path.fridaPs", null);
+            if (adb != null && !adb.trim().isEmpty()) {
+                lastSessionConfig.setAdbPath(adb.trim());
+            }
+            if (frida != null && !frida.trim().isEmpty()) {
+                lastSessionConfig.setFridaPath(frida.trim());
+            }
+            if (fridaPs != null && !fridaPs.trim().isEmpty()) {
+                lastSessionConfig.setFridaPsPath(fridaPs.trim());
+            }
+            if (pluginOptions != null) {
+                pluginOptions.updateFrom(lastSessionConfig, lastScriptOptions,
+                        pluginOptions.isTemplateAppend(), pluginOptions.getTemplateName(), pluginOptions.getTemplateContent());
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     private void startSessionFromConnection(FridaSessionConfig cfg) {
         if (cfg == null) {
             return;
@@ -627,7 +728,7 @@ public class FridaTracePlugin implements JadxPlugin {
             return;
         }
         try {
-            String script = HookScriptGenerator.generateCombined(getActiveSpecs());
+            String script = buildCombinedScript();
             fridaController.startWithScript(cfg, script, this::appendLog);
             activeSessionConfig = cfg;
             if (consolePanel != null) {
@@ -712,7 +813,7 @@ public class FridaTracePlugin implements JadxPlugin {
             return;
         }
         try {
-            String script = HookScriptGenerator.generateCombined(getActiveSpecs());
+            String script = buildCombinedScript();
             fridaController.updateSessionScript(script, this::appendLog);
             if (consolePanel != null) {
                 consolePanel.setScript(script);
@@ -731,6 +832,66 @@ public class FridaTracePlugin implements JadxPlugin {
             }
         }
         return active;
+    }
+
+    private String buildCombinedScript() {
+        java.util.List<String> globals = new java.util.ArrayList<>();
+        java.util.List<CustomScriptEntry> scripts = parseCustomScriptPaths(customScriptPaths);
+        for (CustomScriptEntry entry : scripts) {
+            if (!entry.enabled || entry.path.isEmpty()) {
+                continue;
+            }
+            try {
+                java.nio.file.Path p = java.nio.file.Paths.get(entry.path);
+                String content = java.nio.file.Files.readString(p);
+                globals.add("// -- " + entry.path + "\n" + content);
+            } catch (Exception e) {
+                if (missingCustomScripts.add(entry.path)) {
+                    appendLog("Custom script not found: " + entry.path);
+                }
+            }
+        }
+        return HookScriptGenerator.generateCombined(getActiveSpecs(), globals);
+    }
+
+    private static final class CustomScriptEntry {
+        final String path;
+        final boolean enabled;
+
+        private CustomScriptEntry(String path, boolean enabled) {
+            this.path = path == null ? "" : path.trim();
+            this.enabled = enabled;
+        }
+    }
+
+    private java.util.List<CustomScriptEntry> parseCustomScriptPaths(String raw) {
+        java.util.List<CustomScriptEntry> entries = new java.util.ArrayList<>();
+        if (raw == null || raw.trim().isEmpty()) {
+            return entries;
+        }
+        String[] lines = raw.split("\\R");
+        for (String line : lines) {
+            if (line == null) {
+                continue;
+            }
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            boolean enabled = true;
+            String path = trimmed;
+            if (trimmed.startsWith("1|") || trimmed.startsWith("0|")) {
+                enabled = trimmed.startsWith("1|");
+                path = trimmed.substring(2).trim();
+            } else if (trimmed.startsWith("[x]") || trimmed.startsWith("[ ]")) {
+                enabled = trimmed.startsWith("[x]");
+                path = trimmed.substring(3).trim();
+            }
+            if (!path.isEmpty()) {
+                entries.add(new CustomScriptEntry(path, enabled));
+            }
+        }
+        return entries;
     }
 
     private void toggleHook(HookRecord record) {

@@ -413,6 +413,7 @@ public class FridaConfigDialog extends JDialog {
         return panel;
     }
 
+
     private void loadTemplate() {
         ScriptTemplate template = (ScriptTemplate) templateList.getSelectedItem();
         if (template != null) {
@@ -669,6 +670,7 @@ public class FridaConfigDialog extends JDialog {
         }
         return "";
     }
+
 
     public boolean isTemplateAppend() {
         return templateAppend.isSelected();

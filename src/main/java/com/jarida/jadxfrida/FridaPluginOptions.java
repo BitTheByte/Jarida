@@ -28,6 +28,7 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
     private boolean templateAppend = false;
     private String templateName = "None";
     private String templateContent = "";
+    private String customScriptPaths = "";
 
     public FridaPluginOptions() {
         registerOptions();
@@ -116,6 +117,10 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
                 .description("Custom script content")
                 .defaultValue(templateContent)
                 .setter(v -> templateContent = v);
+        strOption(PREFIX + "customScriptPaths")
+                .description("Custom script file paths (one per line)")
+                .defaultValue(customScriptPaths)
+                .setter(v -> customScriptPaths = v);
     }
 
     public FridaSessionConfig toSessionConfig() {
@@ -189,5 +194,15 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
 
     public String getTemplateContent() {
         return templateContent;
+    }
+
+    public String getCustomScriptPaths() {
+        return customScriptPaths;
+    }
+
+    public void setCustomScripts(String paths) {
+        if (paths != null) {
+            this.customScriptPaths = paths;
+        }
     }
 }

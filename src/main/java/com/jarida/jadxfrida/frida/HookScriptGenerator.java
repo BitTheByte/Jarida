@@ -18,28 +18,27 @@ public final class HookScriptGenerator {
     }
 
     public static String generateCombined(java.util.Collection<HookSpec> specs) {
-        if (specs == null || specs.isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("'use strict';\n");
-            sb.append("setImmediate(function() {\n");
-            sb.append("  Java.perform(function() {\n");
-            sb.append("    // no hooks\n");
-            sb.append("  });\n");
-            sb.append("});\n");
-            return sb.toString();
-        }
+        return generateCombined(specs, null);
+    }
+
+    public static String generateCombined(java.util.Collection<HookSpec> specs, java.util.List<String> globalScripts) {
         StringBuilder sb = new StringBuilder();
         sb.append("'use strict';\n");
+        appendGlobalScripts(sb, globalScripts);
         sb.append("setImmediate(function() {\n");
         sb.append("  Java.perform(function() {\n");
         appendHelpers(sb);
         int idx = 0;
-        for (HookSpec spec : specs) {
-            if (spec == null || spec.getTarget() == null) {
-                continue;
+        if (specs == null || specs.isEmpty()) {
+            sb.append("    // no hooks\n");
+        } else {
+            for (HookSpec spec : specs) {
+                if (spec == null || spec.getTarget() == null) {
+                    continue;
+                }
+                idx++;
+                appendHook(sb, spec, idx);
             }
-            idx++;
-            appendHook(sb, spec, idx);
         }
         sb.append("  });\n");
         sb.append("});\n");
@@ -97,6 +96,20 @@ public final class HookScriptGenerator {
         for (String line : lines) {
             sb.append(indent).append(line).append("\n");
         }
+    }
+
+    private static void appendGlobalScripts(StringBuilder sb, java.util.List<String> scripts) {
+        if (scripts == null || scripts.isEmpty()) {
+            return;
+        }
+        for (String script : scripts) {
+            if (script == null || script.trim().isEmpty()) {
+                continue;
+            }
+            sb.append("\n// ---- Jarida custom script ----\n");
+            sb.append(script).append("\n");
+        }
+        sb.append("\n");
     }
 
     private static void appendHelpers(StringBuilder sb) {
