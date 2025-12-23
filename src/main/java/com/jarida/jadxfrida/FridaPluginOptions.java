@@ -3,6 +3,7 @@ package com.jarida.jadxfrida;
 import com.jarida.jadxfrida.model.DeviceMode;
 import com.jarida.jadxfrida.model.FridaSessionConfig;
 import com.jarida.jadxfrida.model.ScriptOptions;
+import com.jarida.jadxfrida.model.TemplatePosition;
 import jadx.api.plugins.options.impl.BasePluginOptionsBuilder;
 
 public class FridaPluginOptions extends BasePluginOptionsBuilder {
@@ -28,7 +29,7 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
     private boolean templateAppend = false;
     private String templateName = "None";
     private String templateContent = "";
-    private String customScriptPaths = "";
+    private TemplatePosition templatePosition = TemplatePosition.APPEND;
 
     public FridaPluginOptions() {
         registerOptions();
@@ -117,10 +118,13 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
                 .description("Custom script content")
                 .defaultValue(templateContent)
                 .setter(v -> templateContent = v);
-        strOption(PREFIX + "customScriptPaths")
-                .description("Custom script file paths (one per line)")
-                .defaultValue(customScriptPaths)
-                .setter(v -> customScriptPaths = v);
+        if (templatePosition == null) {
+            templatePosition = TemplatePosition.APPEND;
+        }
+        enumOption(PREFIX + "templatePosition", TemplatePosition.values(), TemplatePosition::valueOf)
+                .description("Template position inside hook")
+                .defaultValue(templatePosition)
+                .setter(v -> templatePosition = v);
     }
 
     public FridaSessionConfig toSessionConfig() {
@@ -196,13 +200,14 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
         return templateContent;
     }
 
-    public String getCustomScriptPaths() {
-        return customScriptPaths;
+    public TemplatePosition getTemplatePosition() {
+        return templatePosition == null ? TemplatePosition.APPEND : templatePosition;
     }
 
-    public void setCustomScripts(String paths) {
-        if (paths != null) {
-            this.customScriptPaths = paths;
+    public void setTemplatePosition(TemplatePosition position) {
+        if (position != null) {
+            this.templatePosition = position;
         }
     }
+
 }

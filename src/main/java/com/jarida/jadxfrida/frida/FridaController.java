@@ -34,6 +34,7 @@ public class FridaController {
     private volatile String lastScriptContent;
     private java.util.function.Consumer<Integer> onExit;
     private final AtomicBoolean exitNotified = new AtomicBoolean(false);
+    private volatile boolean sessionAutoReloadEnabled = false;
 
     public synchronized boolean isRunning() {
         return process != null && process.isAlive();
@@ -45,6 +46,7 @@ public class FridaController {
         }
         sessionScriptPath = null;
         lastScriptContent = null;
+        sessionAutoReloadEnabled = false;
         cleanupTempScripts();
     }
 
@@ -139,6 +141,7 @@ public class FridaController {
         boolean useNoPause = config.isSpawn() && isNoPauseSupported(fridaPath, log);
         boolean useAutoReload = isAutoReloadSupported(fridaPath, log);
         List<String> command = buildCommand(config, sessionScriptPath.toFile(), useNoPause, useAutoReload);
+        sessionAutoReloadEnabled = command.contains("--auto-reload");
         log.accept("Starting Jarida (frida): " + String.join(" ", command));
 
         ProcessBuilder builder = new ProcessBuilder(command);
@@ -171,9 +174,7 @@ public class FridaController {
         }
         Files.write(sessionScriptPath, script.getBytes(StandardCharsets.UTF_8));
         lastScriptContent = script;
-        if (!Boolean.TRUE.equals(autoReloadSupported)) {
-            log.accept("Frida --auto-reload not supported; script updated on disk but not reloaded. Restart to apply.");
-        }
+        // Do not warn here; some Frida builds reload scripts without requiring a flag.
     }
 
     private Thread startReader(java.io.InputStream stream, Consumer<String> out, boolean stderr) {
@@ -366,8 +367,34 @@ public class FridaController {
             } catch (Exception e) {
                 log.accept("Unable to detect frida --auto-reload support: " + e.getMessage());
             }
+            if (!supported) {
+                String version = getFridaVersion(fridaPath);
+                int major = parseMajorVersion(version);
+                if (major >= 16) {
+                    supported = true;
+                }
+            }
             autoReloadSupported = supported;
             return supported;
+        }
+    }
+
+    private int parseMajorVersion(String version) {
+        if (version == null || version.trim().isEmpty()) {
+            return -1;
+        }
+        String v = version.trim();
+        if (v.toLowerCase().startsWith("frida")) {
+            v = v.replaceAll("[^0-9.]", "");
+        }
+        String[] parts = v.split("\\.");
+        if (parts.length == 0) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(parts[0]);
+        } catch (NumberFormatException e) {
+            return -1;
         }
     }
 

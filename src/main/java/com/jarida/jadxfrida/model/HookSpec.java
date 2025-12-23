@@ -5,13 +5,16 @@ public class HookSpec {
     private final ScriptOptions options;
     private final ReturnPatchRule returnPatchRule;
     private final String extraScript;
+    private final TemplatePosition templatePosition;
     private final String hookId;
 
-    public HookSpec(MethodTarget target, ScriptOptions options, ReturnPatchRule returnPatchRule, String extraScript, String hookId) {
+    public HookSpec(MethodTarget target, ScriptOptions options, ReturnPatchRule returnPatchRule,
+                    String extraScript, TemplatePosition templatePosition, String hookId) {
         this.target = target;
         this.options = options;
         this.returnPatchRule = returnPatchRule;
         this.extraScript = extraScript;
+        this.templatePosition = templatePosition == null ? TemplatePosition.APPEND : templatePosition;
         this.hookId = hookId;
     }
 
@@ -29,6 +32,10 @@ public class HookSpec {
 
     public String getExtraScript() {
         return extraScript;
+    }
+
+    public TemplatePosition getTemplatePosition() {
+        return templatePosition;
     }
 
     public String getHookId() {

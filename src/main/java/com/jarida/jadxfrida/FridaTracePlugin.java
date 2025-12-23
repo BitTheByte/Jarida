@@ -91,7 +91,6 @@ public class FridaTracePlugin implements JadxPlugin {
         context.registerOptions(pluginOptions);
         this.lastSessionConfig = pluginOptions.toSessionConfig();
         this.lastScriptOptions = pluginOptions.toScriptOptions();
-        this.customScriptPaths = pluginOptions.getCustomScriptPaths();
         loadSavedPaths();
         if (guiContext != null) {
             initGui();
@@ -281,6 +280,7 @@ public class FridaTracePlugin implements JadxPlugin {
         FridaConfigDialog dialog = new FridaConfigDialog(guiContext.getMainFrame(), fridaController, target, pkg,
                 patchDefault, lastSessionConfig, lastScriptOptions,
                 pluginOptions.getTemplateName(), pluginOptions.getTemplateContent(), pluginOptions.isTemplateAppend(),
+                pluginOptions.getTemplatePosition(),
                 fixedConfig, false, showReturnTab, focusReturnTab);
         dialog.setVisible(true);
         if (!dialog.isConfirmed()) {
@@ -290,6 +290,7 @@ public class FridaTracePlugin implements JadxPlugin {
         lastScriptOptions = dialog.getScriptOptions();
         pluginOptions.updateFrom(lastSessionConfig, lastScriptOptions,
                 dialog.isTemplateAppend(), dialog.getTemplateName(), dialog.getTemplateContent());
+        pluginOptions.setTemplatePosition(dialog.getTemplatePosition());
         ReturnPatchRule patchRule = dialog.getReturnPatchRule();
         String hookKey = hookKey(target);
         HookRecord record = hooks.get(hookKey);
@@ -302,7 +303,8 @@ public class FridaTracePlugin implements JadxPlugin {
                 record.setNodeRef(ref);
             }
         }
-        HookSpec spec = new HookSpec(target, lastScriptOptions, patchRule, dialog.getExtraScript(), hookKey);
+        HookSpec spec = new HookSpec(target, lastScriptOptions, patchRule,
+                dialog.getExtraScript(), dialog.getTemplatePosition(), hookKey);
         hookSpecs.put(hookKey, spec);
         String script = buildCombinedScript();
         boolean canReuseNow = fridaController.isRunning()
@@ -650,7 +652,6 @@ public class FridaTracePlugin implements JadxPlugin {
 
     private void applyCustomScriptsFromConsole(String paths) {
         customScriptPaths = paths == null ? "" : paths;
-        pluginOptions.setCustomScripts(customScriptPaths);
         String script = buildCombinedScript();
         if (consolePanel != null) {
             consolePanel.setScript(script);

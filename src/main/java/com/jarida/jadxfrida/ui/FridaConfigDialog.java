@@ -12,6 +12,7 @@ import com.jarida.jadxfrida.model.ReturnPatchRule;
 import com.jarida.jadxfrida.model.ScriptTemplate;
 import com.jarida.jadxfrida.model.ScriptTemplateStore;
 import com.jarida.jadxfrida.model.ScriptOptions;
+import com.jarida.jadxfrida.model.TemplatePosition;
 import com.jarida.jadxfrida.util.AdbUtil;
 import com.jarida.jadxfrida.util.ProcessResult;
 import com.jarida.jadxfrida.util.ProcessUtils;
@@ -72,6 +73,7 @@ public class FridaConfigDialog extends JDialog {
     private final JComboBox<ScriptTemplate> templateList;
     private final JTextArea templateArea;
     private final JCheckBox templateAppend;
+    private final JComboBox<TemplatePosition> templatePosition;
     private final JTabbedPane tabs;
     private final boolean showReturnTab;
     private final FridaSessionConfig fixedSessionConfig;
@@ -88,6 +90,7 @@ public class FridaConfigDialog extends JDialog {
                              String defaultPackage, boolean patchDefault,
                              FridaSessionConfig initialConfig, ScriptOptions initialOptions,
                              String templateName, String templateContent, boolean templateAppendDefault,
+                             TemplatePosition templatePositionDefault,
                              FridaSessionConfig fixedSessionConfig, boolean allowConnectionEdit,
                              boolean showReturnTab, boolean focusReturnTab) {
         super(owner, "Jarida Configuration", true);
@@ -133,10 +136,11 @@ public class FridaConfigDialog extends JDialog {
             templateList.addItem(template);
         }
         templateArea = new JTextArea(8, 60);
-        templateAppend = new JCheckBox("Append template to generated script");
+        templateAppend = new JCheckBox("Enable template for hook");
+        templatePosition = new JComboBox<>(TemplatePosition.values());
 
         applyInitial(initialConfig, initialOptions);
-        applyTemplateInitial(templateName, templateContent, templateAppendDefault);
+        applyTemplateInitial(templateName, templateContent, templateAppendDefault, templatePositionDefault);
 
         deviceMode.addActionListener(e -> updateDeviceMode());
         spawnRadio.addActionListener(e -> updateAttachMode());
@@ -205,10 +209,13 @@ public class FridaConfigDialog extends JDialog {
         }
     }
 
-    private void applyTemplateInitial(String name, String content, boolean append) {
+    private void applyTemplateInitial(String name, String content, boolean append, TemplatePosition position) {
         templateAppend.setSelected(append);
         if (content != null) {
             templateArea.setText(content);
+        }
+        if (position != null) {
+            templatePosition.setSelectedItem(position);
         }
         if (name != null) {
             for (int i = 0; i < templateList.getItemCount(); i++) {
@@ -407,6 +414,8 @@ public class FridaConfigDialog extends JDialog {
         load.addActionListener(e -> loadTemplate());
         top.add(load);
         top.add(templateAppend);
+        top.add(new JLabel("Placement:"));
+        top.add(templatePosition);
 
         panel.add(top, BorderLayout.NORTH);
         panel.add(new JScrollPane(templateArea), BorderLayout.CENTER);
@@ -674,6 +683,11 @@ public class FridaConfigDialog extends JDialog {
 
     public boolean isTemplateAppend() {
         return templateAppend.isSelected();
+    }
+
+    public TemplatePosition getTemplatePosition() {
+        TemplatePosition pos = (TemplatePosition) templatePosition.getSelectedItem();
+        return pos == null ? TemplatePosition.APPEND : pos;
     }
 
     public String getTemplateName() {

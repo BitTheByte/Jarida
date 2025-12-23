@@ -4,6 +4,7 @@ import com.jarida.jadxfrida.model.HookSpec;
 import com.jarida.jadxfrida.model.MethodTarget;
 import com.jarida.jadxfrida.model.ReturnPatchRule;
 import com.jarida.jadxfrida.model.ScriptOptions;
+import com.jarida.jadxfrida.model.TemplatePosition;
 import com.jarida.jadxfrida.util.JsEscaper;
 import com.jarida.jadxfrida.util.TypeUtil;
 
@@ -87,15 +88,16 @@ public final class HookScriptGenerator {
         return val == null ? "" : val;
     }
 
-    private static void appendExtraScript(StringBuilder sb, String extraScript, String indent) {
+    private static void appendExtraScriptInline(StringBuilder sb, String extraScript, String indent) {
         if (extraScript == null || extraScript.trim().isEmpty()) {
             return;
         }
-        sb.append(indent).append("// Extra script\n");
+        sb.append(indent).append("try {\n");
         String[] lines = extraScript.split("\\R");
         for (String line : lines) {
-            sb.append(indent).append(line).append("\n");
+            sb.append(indent).append("  ").append(line).append("\n");
         }
+        sb.append(indent).append("} catch (e) { console.log('[JARIDA] Template error: ' + e); }\n");
     }
 
     private static void appendGlobalScripts(StringBuilder sb, java.util.List<String> scripts) {
@@ -388,6 +390,9 @@ public final class HookScriptGenerator {
         ReturnPatchRule patch = spec.getReturnPatchRule();
         List<String> argTypes = target.getArgTypes();
         String suffix = "_" + idx;
+        String extraScript = spec.getExtraScript();
+        boolean hasExtra = extraScript != null && !extraScript.trim().isEmpty();
+        TemplatePosition position = spec.getTemplatePosition();
 
         sb.append("    try {\n");
         sb.append("    // Hook: ").append(target.getDisplaySignature()).append("\n");
@@ -459,12 +464,18 @@ public final class HookScriptGenerator {
         sb.append("      var callLine = formatCall(METHOD_SIG").append(suffix).append(", args, OPTIONS").append(suffix).append(", threadName);\n");
         sb.append("      var prefix = '[JARIDA] #' + callId + ' ';\n");
         sb.append("      console.log(prefix + 'CALL ' + callLine);\n");
+        sb.append("      var TARGET_CLASS = TARGET_CLASS").append(suffix).append(";\n");
+        sb.append("      var TARGET_METHOD = TARGET_METHOD").append(suffix).append(";\n");
+        sb.append("      var METHOD_SIG = METHOD_SIG").append(suffix).append(";\n");
         sb.append("      if (OPTIONS").append(suffix).append(".printThis) {\n");
         sb.append("        try { console.log(prefix + 'THIS ' + safeToString(this, OPTIONS").append(suffix).append(")); } catch (e) {}\n");
         sb.append("      }\n");
         sb.append("      if (OPTIONS").append(suffix).append(".printStack) {\n");
         sb.append("        console.log(prefix + 'STACK\\n' + getStackTrace());\n");
         sb.append("      }\n");
+        if (hasExtra && position == TemplatePosition.PREPEND) {
+            appendExtraScriptInline(sb, extraScript, "      ");
+        }
 
         sb.append("      var ret = overload").append(suffix).append(".call(this");
         if (!argTypes.isEmpty()) {
@@ -474,6 +485,9 @@ public final class HookScriptGenerator {
         }
         sb.append(");\n");
 
+        if (hasExtra && position == TemplatePosition.APPEND) {
+            appendExtraScriptInline(sb, extraScript, "      ");
+        }
         sb.append("      if (OPTIONS").append(suffix).append(".logReturn) {\n");
         sb.append("        if (RETURN_TYPE").append(suffix).append(" === 'void') {\n");
         sb.append("          console.log(prefix + 'RET  ' + METHOD_SIG").append(suffix).append(" + ' => void');\n");
@@ -488,13 +502,7 @@ public final class HookScriptGenerator {
         sb.append("      if (RETURN_TYPE").append(suffix).append(" === 'void') { return; }\n");
         sb.append("      return castReturn(patched, RETURN_TYPE").append(suffix).append(");\n");
         sb.append("    };\n");
-        // avoid noisy "Hooked" logs on auto-reload; plugin logs selection in UI
-        if (spec.getExtraScript() != null && !spec.getExtraScript().trim().isEmpty()) {
-            sb.append("    var TARGET_CLASS = TARGET_CLASS").append(suffix).append(";\n");
-            sb.append("    var TARGET_METHOD = TARGET_METHOD").append(suffix).append(";\n");
-            sb.append("    var RETURN_TYPE = RETURN_TYPE").append(suffix).append(";\n");
-        }
-        appendExtraScript(sb, spec.getExtraScript(), "    ");
+        // avoid noisy "Hooked" logs on auto-reload; extra scripts are injected per-call
         sb.append("    } catch (e) { console.log('[JARIDA] Hook error: ' + e); }\n");
     }
 }
