@@ -137,11 +137,21 @@ public class FridaTracePlugin implements JadxPlugin {
     }
 
     private void openConsole() {
+        openConsole(true);
+    }
+
+    private void openConsole(boolean focus) {
         guiContext.uiRun(() -> {
             JFrame frame = guiContext.getMainFrame();
             if (frame instanceof MainWindow) {
                 MainWindow mainWindow = (MainWindow) frame;
                 TabbedPane tabs = mainWindow.getTabbedPane();
+                int prevIndex = tabs.getSelectedIndex();
+                ContentPanel prevPanel = null;
+                try {
+                    prevPanel = tabs.getSelectedContentPanel();
+                } catch (Exception ignored) {
+                }
                 if (consoleNode == null) {
                     String pkg = PackageNameResolver.resolvePackageName(decompiler);
                     String version = getVersionString();
@@ -150,7 +160,15 @@ public class FridaTracePlugin implements JadxPlugin {
                     consoleNode = new FridaConsoleNode(this::removeHook, this::toggleHook, this::removeAllHooks, connectionPanel, version);
                 }
                 mainWindow.getTabsController().openTab(consoleNode);
-                mainWindow.getTabsController().selectTab(consoleNode, true);
+                if (focus) {
+                    mainWindow.getTabsController().selectTab(consoleNode, true);
+                } else {
+                    if (prevPanel != null && tabs.indexOfComponent(prevPanel) >= 0) {
+                        tabs.setSelectedComponent(prevPanel);
+                    } else if (prevIndex >= 0 && prevIndex < tabs.getTabCount()) {
+                        tabs.setSelectedIndex(prevIndex);
+                    }
+                }
                 ensureTabComponent(tabs, consoleNode);
                 consolePanel = consoleNode.getPanel();
                 if (connectionPanel != null) {
@@ -198,7 +216,6 @@ public class FridaTracePlugin implements JadxPlugin {
     private void openSettings(ICodeNodeRef ref, boolean patchDefault, boolean showReturnTab,
                               boolean focusReturnTab, boolean requireConnection) {
         if (requireConnection && !fridaController.isRunning()) {
-            appendLog("Jarida connection required.");
             SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
                     guiContext.getMainFrame(),
                     "Jarida connection required.",
@@ -258,7 +275,6 @@ public class FridaTracePlugin implements JadxPlugin {
                 && fixedConfig != null
                 && fixedConfig.isCompatibleForReuse(activeSessionConfig);
 
-        openConsole();
         if (consolePanel != null) {
             consolePanel.setScript(script);
         } else {
@@ -633,7 +649,7 @@ public class FridaTracePlugin implements JadxPlugin {
             return;
         }
         guiContext.uiRun(() -> {
-            openConsole();
+            openConsole(true);
             if (consolePanel != null) {
                 consolePanel.selectConnectionTab();
             }
