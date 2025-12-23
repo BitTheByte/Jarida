@@ -44,9 +44,21 @@ target/Jarida-<version>.jar
 ```
 
 ## Install in Jadx GUI
+You can install Jarida either from the Jadx plugin store or from a local jar.
+
+### Option A — Install from Jadx Plugin Store (recommended)
+1. Open Jadx GUI
+2. **Plugins → Manage plugins**
+3. Find **Jarida**
+4. Click **Install**
+5. Restart Jadx
+
+### Option B — Install local jar
+You can download the jar from **GitHub Releases** or build it yourself.
+
 1. Open Jadx GUI
 2. **Plugins → Install plugin**
-3. Select the built jar
+3. Select the jar (from Releases or local build): `Jarida-<version>.jar`
 4. Restart Jadx
 
 ## Troubleshooting
