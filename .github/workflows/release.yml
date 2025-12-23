@@ -26,7 +26,6 @@ jobs:
         run: |
           python - <<'PY'
           import xml.etree.ElementTree as ET
-          import re
           from pathlib import Path
 
           pom = Path("pom.xml")
@@ -36,10 +35,10 @@ jobs:
           version = root.find("m:version", ns)
           if version is None or not version.text:
               raise SystemExit("Version not found in pom.xml")
-          m = re.match(r"^(\d+)\.(\d+)\.(\d+)$", version.text.strip())
-          if not m:
+          parts = version.text.strip().split(".")
+          if len(parts) != 3 or not all(p.isdigit() for p in parts):
               raise SystemExit(f"Unexpected version format: {version.text}")
-          major, minor, patch = map(int, m.groups())
+          major, minor, patch = map(int, parts)
           patch += 1
           new_version = f"{major}.{minor}.{patch}"
           version.text = new_version
