@@ -1,0 +1,68 @@
+name: Jarida Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Bump version
+        id: bump
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          import re
+          from pathlib import Path
+
+          pom = Path("pom.xml")
+          tree = ET.parse(pom)
+          root = tree.getroot()
+          ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+          version = root.find("m:version", ns)
+          if version is None or not version.text:
+              raise SystemExit("Version not found in pom.xml")
+          m = re.match(r"^(\\d+)\\.(\\d+)\\.(\\d+)$", version.text.strip())
+          if not m:
+              raise SystemExit(f"Unexpected version format: {version.text}")
+          major, minor, patch = map(int, m.groups())
+          patch += 1
+          new_version = f"{major}.{minor}.{patch}"
+          version.text = new_version
+          tree.write(pom, encoding="utf-8", xml_declaration=True)
+          print(new_version)
+          PY
+          echo "version=$(python - <<'PY'\nimport xml.etree.ElementTree as ET\nimport re\nns={'m':'http://maven.apache.org/POM/4.0.0'}\nroot=ET.parse('pom.xml').getroot()\nversion=root.find('m:version', ns).text.strip()\nprint(version)\nPY)" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: mvn -DskipTests package
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pom.xml
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}" || exit 0
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push origin HEAD --tags
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: Jarida v${{ steps.bump.outputs.version }}
+          files: target/jarida-jadx-plugin-${{ steps.bump.outputs.version }}.jar

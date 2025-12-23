@@ -1,0 +1,18 @@
+target/
+build/
+.m2repo/
+.m2-tmp/
+
+# IDEs
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+
+# OS/files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
