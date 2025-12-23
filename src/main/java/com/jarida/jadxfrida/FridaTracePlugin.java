@@ -79,6 +79,7 @@ public class FridaTracePlugin implements JadxPlugin {
                 .description("Jarida: Frida-backed runtime tracing and patching for Jadx")
                 .homepage("https://github.com/BitTheByte/Jarida")
                 .provides("gui")
+                .requiredJadxVersion("1.5.0, r0")
                 .build();
     }
 

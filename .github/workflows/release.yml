@@ -49,18 +49,25 @@ jobs:
       - name: Build
         run: mvn -DskipTests package
 
+      - name: Prepare release artifacts
+        run: |
+          version="${{ steps.bump.outputs.version }}"
+          cp "target/Jarida-${version}.jar" "target/Jarida-v${version}.jar"
+
       - name: Commit version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add pom.xml
           git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}" || exit 0
-          git tag "v${{ steps.bump.outputs.version }}"
+          git tag "${{ steps.bump.outputs.version }}"
           git push origin HEAD --tags
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.bump.outputs.version }}
-          name: Jarida v${{ steps.bump.outputs.version }}
-          files: target/Jarida-${{ steps.bump.outputs.version }}.jar
+          tag_name: ${{ steps.bump.outputs.version }}
+          name: Jarida ${{ steps.bump.outputs.version }}
+          files: |
+            target/Jarida-${{ steps.bump.outputs.version }}.jar
+            target/Jarida-v${{ steps.bump.outputs.version }}.jar
