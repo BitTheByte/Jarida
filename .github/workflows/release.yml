@@ -63,4 +63,4 @@ jobs:
         with:
           tag_name: v${{ steps.bump.outputs.version }}
           name: Jarida v${{ steps.bump.outputs.version }}
-          files: target/jarida-jadx-plugin-${{ steps.bump.outputs.version }}.jar
+          files: target/Jarida-${{ steps.bump.outputs.version }}.jar

@@ -40,7 +40,7 @@ mvn -DskipTests package
 
 Jar output:
 ```
-target/jarida-jadx-plugin-<version>.jar
+target/Jarida-<version>.jar
 ```
 
 ## Install in Jadx GUI
@@ -54,4 +54,3 @@ target/jarida-jadx-plugin-<version>.jar
 - **No device:** confirm `adb devices -l` shows your device.
 - **frida-server not running:** restart it from ADB shell.
 - **Attach fails:** try Spawn mode or select the correct PID.
-
