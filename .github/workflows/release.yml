@@ -49,11 +49,6 @@ jobs:
       - name: Build
         run: mvn -DskipTests package
 
-      - name: Prepare release artifacts
-        run: |
-          version="${{ steps.bump.outputs.version }}"
-          cp "target/Jarida-${version}.jar" "target/Jarida-v${version}.jar"
-
       - name: Commit version bump
         run: |
           git config user.name "github-actions[bot]"
@@ -68,6 +63,4 @@ jobs:
         with:
           tag_name: ${{ steps.bump.outputs.version }}
           name: Jarida ${{ steps.bump.outputs.version }}
-          files: |
-            target/Jarida-${{ steps.bump.outputs.version }}.jar
-            target/Jarida-v${{ steps.bump.outputs.version }}.jar
+          files: target/jarida-${{ steps.bump.outputs.version }}.jar

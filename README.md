@@ -40,7 +40,7 @@ mvn -DskipTests package
 
 Jar output:
 ```
-target/Jarida-<version>.jar
+target/jarida-<version>.jar
 ```
 
 ## Install in Jadx GUI
@@ -58,7 +58,7 @@ You can download the jar from **GitHub Releases** or build it yourself.
 
 1. Open Jadx GUI
 2. **Plugins → Install plugin**
-3. Select the jar (from Releases or local build): `Jarida-<version>.jar`
+3. Select the jar (from Releases or local build): `jarida-<version>.jar`
 4. Restart Jadx
 
 ## Troubleshooting
