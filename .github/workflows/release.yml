@@ -36,7 +36,7 @@ jobs:
           version = root.find("m:version", ns)
           if version is None or not version.text:
               raise SystemExit("Version not found in pom.xml")
-          m = re.match(r"^(\\d+)\\.(\\d+)\\.(\\d+)$", version.text.strip())
+          m = re.match(r"^(\d+)\.(\d+)\.(\d+)$", version.text.strip())
           if not m:
               raise SystemExit(f"Unexpected version format: {version.text}")
           major, minor, patch = map(int, m.groups())
