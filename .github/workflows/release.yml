@@ -27,6 +27,7 @@ jobs:
           python - <<'PY'
           import xml.etree.ElementTree as ET
           from pathlib import Path
+          import os
 
           pom = Path("pom.xml")
           tree = ET.parse(pom)
@@ -44,8 +45,11 @@ jobs:
           version.text = new_version
           tree.write(pom, encoding="utf-8", xml_declaration=True)
           print(new_version)
+          out = os.environ.get("GITHUB_OUTPUT")
+          if out:
+              with open(out, "a", encoding="utf-8") as f:
+                  f.write(f"version={new_version}\n")
           PY
-          echo "version=$(python - <<'PY'\nimport xml.etree.ElementTree as ET\nimport re\nns={'m':'http://maven.apache.org/POM/4.0.0'}\nroot=ET.parse('pom.xml').getroot()\nversion=root.find('m:version', ns).text.strip()\nprint(version)\nPY)" >> "$GITHUB_OUTPUT"
 
       - name: Build
         run: mvn -DskipTests package
