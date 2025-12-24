@@ -11,15 +11,17 @@ public class MethodTarget {
     private final List<String> argTypes;
     private final boolean isStatic;
     private final boolean isConstructor;
+    private final String displaySignature;
 
     public MethodTarget(String className, String methodName, String returnType, List<String> argTypes,
-                        boolean isStatic, boolean isConstructor) {
+                        boolean isStatic, boolean isConstructor, String displaySignature) {
         this.className = className;
         this.methodName = methodName;
         this.returnType = returnType;
         this.argTypes = new ArrayList<>(argTypes);
         this.isStatic = isStatic;
         this.isConstructor = isConstructor;
+        this.displaySignature = displaySignature;
     }
 
     public String getClassName() {
@@ -47,6 +49,9 @@ public class MethodTarget {
     }
 
     public String getDisplaySignature() {
+        if (displaySignature != null && !displaySignature.isEmpty()) {
+            return displaySignature;
+        }
         return className + "." + methodName + "(" + String.join(", ", argTypes) + ")" + ":" + returnType;
     }
 }

@@ -436,10 +436,21 @@ public final class HookScriptGenerator {
 
         sb.append("    var clazz").append(suffix).append(" = Java.use(TARGET_CLASS").append(suffix).append(");\n");
         sb.append("    var CALL_COUNT").append(suffix).append(" = 0;\n");
+        sb.append("    var overload").append(suffix).append(" = null;\n");
         if (target.isConstructor()) {
-            sb.append("    var overload").append(suffix).append(" = clazz").append(suffix).append(".$init");
+            sb.append("    var ctor").append(suffix).append(" = clazz").append(suffix).append(".$init;\n");
+            sb.append("    if (!ctor").append(suffix).append(") {\n");
+            sb.append("      console.log('[JARIDA] Hook skipped, constructor not found: ' + TARGET_CLASS").append(suffix).append(");\n");
+            sb.append("    } else {\n");
+            sb.append("      try {\n");
+            sb.append("        overload").append(suffix).append(" = ctor").append(suffix);
         } else {
-            sb.append("    var overload").append(suffix).append(" = clazz").append(suffix).append("[TARGET_METHOD").append(suffix).append("]");
+            sb.append("    var methodRef").append(suffix).append(" = clazz").append(suffix).append("[TARGET_METHOD").append(suffix).append("];\n");
+            sb.append("    if (!methodRef").append(suffix).append(") {\n");
+            sb.append("      console.log('[JARIDA] Hook skipped, method not found: ' + METHOD_SIG").append(suffix).append(");\n");
+            sb.append("    } else {\n");
+            sb.append("      try {\n");
+            sb.append("        overload").append(suffix).append(" = methodRef").append(suffix);
         }
         if (argTypes.isEmpty()) {
             sb.append(".overload();\n");
@@ -453,7 +464,12 @@ public final class HookScriptGenerator {
             }
             sb.append(");\n");
         }
+        sb.append("      } catch (e) {\n");
+        sb.append("        console.log('[JARIDA] Hook skipped (no overload): ' + METHOD_SIG").append(suffix).append(" + ' => ' + e);\n");
+        sb.append("      }\n");
+        sb.append("    }\n");
 
+        sb.append("    if (overload").append(suffix).append(") {\n");
         sb.append("    overload").append(suffix).append(".implementation = function() {\n");
         sb.append("      var args = [].slice.call(arguments);\n");
         sb.append("      var threadName = null;\n");
@@ -505,6 +521,7 @@ public final class HookScriptGenerator {
         sb.append("      if (RETURN_TYPE").append(suffix).append(" === 'void') { return; }\n");
         sb.append("      return castReturn(patched, RETURN_TYPE").append(suffix).append(");\n");
         sb.append("    };\n");
+        sb.append("    }\n");
         // avoid noisy "Hooked" logs on auto-reload; extra scripts are injected per-call
         sb.append("    } catch (e) { console.log('[JARIDA] Hook error: ' + e); }\n");
     }
