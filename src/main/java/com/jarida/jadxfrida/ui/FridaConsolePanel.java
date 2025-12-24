@@ -20,8 +20,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.RowFilter;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.BorderLayout;
@@ -110,20 +108,6 @@ public class FridaConsolePanel extends ContentPanel {
         hooksTable.getColumnModel().getColumn(0).setMaxWidth(90);
         hooksTable.getColumnModel().getColumn(0).setMinWidth(70);
         // Only two columns now: Enabled + Method
-        hooksTable.getSelectionModel().setSelectionMode(javax.swing.ListSelectionModel.SINGLE_SELECTION);
-        hooksTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
-            @Override
-            public void valueChanged(ListSelectionEvent e) {
-                // no-op placeholder to ensure selection model is initialized for focus clearing
-            }
-        });
-        hooksTable.setFocusable(true);
-        hooksTable.addFocusListener(new java.awt.event.FocusAdapter() {
-            @Override
-            public void focusLost(java.awt.event.FocusEvent e) {
-                hooksTable.clearSelection();
-            }
-        });
 
         JPopupMenu hooksMenu = new JPopupMenu();
         JMenuItem editItem = new JMenuItem("Edit");
@@ -148,34 +132,18 @@ public class FridaConsolePanel extends ContentPanel {
             @Override
             public void mousePressed(MouseEvent e) {
                 maybeShowHookMenu(e);
-                maybeClearSelection(e);
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
                 maybeShowHookMenu(e);
-                maybeClearSelection(e);
             }
 
             private void maybeShowHookMenu(MouseEvent e) {
                 if (!e.isPopupTrigger()) {
                     return;
                 }
-                int row = hooksTable.rowAtPoint(e.getPoint());
-                if (row >= 0) {
-                    hooksTable.setRowSelectionInterval(row, row);
-                }
                 hooksMenu.show(e.getComponent(), e.getX(), e.getY());
-            }
-
-            private void maybeClearSelection(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    return;
-                }
-                int row = hooksTable.rowAtPoint(e.getPoint());
-                if (row < 0) {
-                    hooksTable.clearSelection();
-                }
             }
         });
 
@@ -235,12 +203,6 @@ public class FridaConsolePanel extends ContentPanel {
         hooksTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         hooksScroll = new JScrollPane(hooksTable);
         hooksScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        hooksScroll.getViewport().addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                hooksTable.clearSelection();
-            }
-        });
         hooksScroll.getViewport().addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
             public void componentResized(java.awt.event.ComponentEvent e) {
