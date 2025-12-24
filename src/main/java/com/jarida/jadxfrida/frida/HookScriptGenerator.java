@@ -411,9 +411,7 @@ public final class HookScriptGenerator {
         }
         sb.append("];\n");
         sb.append("    var METHOD_SIG").append(suffix)
-                .append(" = TARGET_CLASS").append(suffix)
-                .append(" + '.' + TARGET_METHOD").append(suffix)
-                .append(" + '(' + ARG_TYPES").append(suffix).append(".join(', ') + ')';\n");
+                .append(" = ").append(JsEscaper.quote(target.getDisplaySignature())).append(";\n");
         sb.append("    var OPTIONS").append(suffix).append(" = {\n");
         sb.append("      logArgs: ").append(opt.isLogArgs()).append(",\n");
         sb.append("      logReturn: ").append(opt.isLogReturn()).append(",\n");
