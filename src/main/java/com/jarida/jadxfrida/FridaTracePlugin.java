@@ -173,7 +173,7 @@ public class FridaTracePlugin implements JadxPlugin {
                     connectionPanel = new JaridaConnectionPanel(fridaController, lastSessionConfig, pkg,
                             this::applyConnectionConfig, this::startSessionFromConnection, this::stopTrace, this::savePathsConfig);
                     consoleNode = new FridaConsoleNode(this::removeHook, this::toggleHook, this::editHook, this::removeAllHooks,
-                            connectionPanel, version, this::applyCustomScriptsFromConsole);
+                            connectionPanel, version, this::applyCustomScriptsFromConsole, this::saveCustomScriptsFromConsole);
                 }
                 jadx.gui.ui.tab.TabsController controller = mainWindow.getTabsController();
                 controller.openTab(consoleNode);
@@ -692,6 +692,15 @@ public class FridaTracePlugin implements JadxPlugin {
         }
     }
 
+    private void saveCustomScriptsFromConsole(String paths) {
+        customScriptPaths = paths == null ? "" : paths;
+        try {
+            PREFS.put("customScripts", customScriptPaths);
+        } catch (Exception ignored) {
+        }
+        appendLog("Custom scripts saved.");
+    }
+
     private void savePathsConfig(FridaSessionConfig cfg) {
         if (cfg == null) {
             return;
@@ -723,6 +732,7 @@ public class FridaTracePlugin implements JadxPlugin {
             String adb = PREFS.get("path.adb", null);
             String frida = PREFS.get("path.frida", null);
             String fridaPs = PREFS.get("path.fridaPs", null);
+            String savedScripts = PREFS.get("customScripts", null);
             if (adb != null && !adb.trim().isEmpty()) {
                 lastSessionConfig.setAdbPath(adb.trim());
             }
@@ -731,6 +741,9 @@ public class FridaTracePlugin implements JadxPlugin {
             }
             if (fridaPs != null && !fridaPs.trim().isEmpty()) {
                 lastSessionConfig.setFridaPsPath(fridaPs.trim());
+            }
+            if (savedScripts != null) {
+                customScriptPaths = savedScripts;
             }
             if (pluginOptions != null) {
                 pluginOptions.updateFrom(lastSessionConfig, lastScriptOptions,

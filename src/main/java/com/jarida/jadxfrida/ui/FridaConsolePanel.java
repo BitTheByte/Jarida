@@ -57,6 +57,7 @@ public class FridaConsolePanel extends ContentPanel {
     private final JTabbedPane tabs;
     private boolean connectionVisible;
     private final Consumer<String> onCustomScriptsChanged;
+    private final Consumer<String> onCustomScriptsSaved;
     private final CustomScriptsTableModel customScriptsModel = new CustomScriptsTableModel();
     private final JTable customScriptsTable = new JTable(customScriptsModel);
 
@@ -64,7 +65,7 @@ public class FridaConsolePanel extends ContentPanel {
                              String version,
                              Consumer<HookRecord> onRemoveHook, Consumer<HookRecord> onToggleHook,
                              Consumer<HookRecord> onEditHook, Runnable onRemoveAll,
-                             Consumer<String> onCustomScriptsChanged) {
+                             Consumer<String> onCustomScriptsChanged, Consumer<String> onCustomScriptsSaved) {
         super(tabbedPane, node);
         this.connectionPanel = connectionPanel;
         this.version = version;
@@ -74,6 +75,7 @@ public class FridaConsolePanel extends ContentPanel {
         this.onRemoveAll = onRemoveAll;
         this.hooksModel.setToggleHandler(onToggleHook);
         this.onCustomScriptsChanged = onCustomScriptsChanged;
+        this.onCustomScriptsSaved = onCustomScriptsSaved;
         setLayout(new BorderLayout());
         logArea = new JTextArea();
         logArea.setEditable(false);
@@ -233,6 +235,13 @@ public class FridaConsolePanel extends ContentPanel {
             return;
         }
         onCustomScriptsChanged.accept(customScriptsModel.serialize());
+    }
+
+    private void saveCustomScripts() {
+        if (onCustomScriptsSaved == null) {
+            return;
+        }
+        onCustomScriptsSaved.accept(customScriptsModel.serialize());
     }
 
     private List<CustomScriptEntry> getSelectedCustomScripts() {
@@ -468,7 +477,10 @@ public class FridaConsolePanel extends ContentPanel {
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JButton applyCustom = new JButton("Apply Custom Scripts");
         applyCustom.addActionListener(e -> applyCustomScripts());
+        JButton saveCustom = new JButton("Save Custom Scripts");
+        saveCustom.addActionListener(e -> saveCustomScripts());
         actions.add(applyCustom);
+        actions.add(saveCustom);
 
         customPanel.add(pathsPanel, BorderLayout.CENTER);
         customPanel.add(actions, BorderLayout.SOUTH);

@@ -19,13 +19,15 @@ public class FridaConsoleNode extends JNode {
     private final Runnable onRemoveAll;
     private final String version;
     private final Consumer<String> onCustomScriptsChanged;
+    private final Consumer<String> onCustomScriptsSaved;
 
     public FridaConsoleNode(Consumer<HookRecord> onRemoveHook,
                             Consumer<HookRecord> onToggleHook,
                             Consumer<HookRecord> onEditHook,
                             Runnable onRemoveAll,
                             JaridaConnectionPanel connectionPanel, String version,
-                            Consumer<String> onCustomScriptsChanged) {
+                            Consumer<String> onCustomScriptsChanged,
+                            Consumer<String> onCustomScriptsSaved) {
         this.onRemoveHook = onRemoveHook;
         this.onToggleHook = onToggleHook;
         this.onEditHook = onEditHook;
@@ -33,6 +35,7 @@ public class FridaConsoleNode extends JNode {
         this.connectionPanel = connectionPanel;
         this.version = version;
         this.onCustomScriptsChanged = onCustomScriptsChanged;
+        this.onCustomScriptsSaved = onCustomScriptsSaved;
     }
 
     @Override
@@ -59,7 +62,7 @@ public class FridaConsoleNode extends JNode {
     public ContentPanel getContentPanel(TabbedPane tabbedPane) {
         if (panel == null || panel.getTabbedPane() != tabbedPane) {
             panel = new FridaConsolePanel(tabbedPane, this, connectionPanel, version,
-                    onRemoveHook, onToggleHook, onEditHook, onRemoveAll, onCustomScriptsChanged);
+                    onRemoveHook, onToggleHook, onEditHook, onRemoveAll, onCustomScriptsChanged, onCustomScriptsSaved);
         }
         return panel;
     }
