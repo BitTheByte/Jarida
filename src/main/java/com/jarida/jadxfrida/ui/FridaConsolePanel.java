@@ -15,13 +15,10 @@ import javax.swing.JToolBar;
 import javax.swing.JPanel;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
-import javax.swing.SwingConstants;
 import javax.swing.RowFilter;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.table.AbstractTableModel;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.BorderLayout;
 import java.awt.Font;
@@ -492,42 +489,42 @@ public class FridaConsolePanel extends ContentPanel {
     }
 
     private java.awt.Component buildInfoPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
+        JPanel panel = new JPanel(new GridBagLayout());
         panel.setBorder(javax.swing.BorderFactory.createEmptyBorder(24, 24, 24, 24));
-        DefaultTableModel model = new DefaultTableModel(new Object[]{"Field", "Value"}, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        model.addRow(new Object[]{"Author", "Ahmed Ezzat (BitTheByte)"});
-        model.addRow(new Object[]{"Project", "https://github.com/BitTheByte/Jarida"});
-        model.addRow(new Object[]{"Version", version == null ? "unknown" : version});
-        javax.swing.JTable table = new javax.swing.JTable(model);
-        table.setRowHeight(24);
-        table.setFillsViewportHeight(true);
-        table.setEnabled(false);
-        table.setFocusable(false);
-        DefaultTableCellRenderer center = new DefaultTableCellRenderer();
-        center.setHorizontalAlignment(SwingConstants.CENTER);
-        table.getColumnModel().getColumn(0).setCellRenderer(center);
-        table.getColumnModel().getColumn(1).setCellRenderer(center);
-        DefaultTableCellRenderer header = (DefaultTableCellRenderer) table.getTableHeader().getDefaultRenderer();
-        header.setHorizontalAlignment(SwingConstants.CENTER);
-        JScrollPane scroll = new JScrollPane(table);
-        scroll.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 0, 0, 0));
-
-        JPanel centerPanel = new JPanel(new java.awt.GridBagLayout());
-        java.awt.GridBagConstraints c = new java.awt.GridBagConstraints();
+        GridBagConstraints c = new GridBagConstraints();
         c.gridx = 0;
         c.gridy = 0;
-        c.weightx = 1;
-        c.weighty = 1;
-        c.anchor = java.awt.GridBagConstraints.CENTER;
-        c.fill = java.awt.GridBagConstraints.NONE;
-        scroll.setPreferredSize(new java.awt.Dimension(520, 140));
-        centerPanel.add(scroll, c);
-        panel.add(centerPanel, BorderLayout.CENTER);
+        c.anchor = GridBagConstraints.WEST;
+        c.insets = new Insets(6, 6, 6, 6);
+
+        JLabel title = new JLabel("Jarida");
+        title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        panel.add(title, c);
+
+        c.gridy++;
+        JLabel versionLabel = new JLabel("Version:");
+        versionLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
+        panel.add(versionLabel, c);
+        c.gridx = 1;
+        JLabel versionValue = new JLabel(version == null ? "unknown" : version);
+        panel.add(versionValue, c);
+
+        c.gridx = 0;
+        c.gridy++;
+        JLabel authorLabel = new JLabel("Author:");
+        authorLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
+        panel.add(authorLabel, c);
+        c.gridx = 1;
+        panel.add(new JLabel("Ahmed Ezzat (BitTheByte)"), c);
+
+        c.gridx = 0;
+        c.gridy++;
+        JLabel projectLabel = new JLabel("Project:");
+        projectLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
+        panel.add(projectLabel, c);
+        c.gridx = 1;
+        panel.add(new JLabel("github.com/BitTheByte/Jarida"), c);
+
         return panel;
     }
 
