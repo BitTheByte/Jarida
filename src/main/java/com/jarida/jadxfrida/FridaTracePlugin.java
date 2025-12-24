@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.io.IOException;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
@@ -64,6 +65,7 @@ public class FridaTracePlugin implements JadxPlugin {
     private final Map<Object, List<Object>> highlightTags = new WeakHashMap<>();
     private boolean highlightListenerInstalled = false;
     private static final Color HOOK_HIGHLIGHT = new Color(78, 145, 90, 70);
+    private final AtomicBoolean suppressExitWarning = new AtomicBoolean(false);
 
     private FridaSessionConfig lastSessionConfig = new FridaSessionConfig();
     private ScriptOptions lastScriptOptions = new ScriptOptions();
@@ -100,6 +102,7 @@ public class FridaTracePlugin implements JadxPlugin {
             );
         }
         fridaController.setOnExit(code -> {
+            boolean expectedExit = suppressExitWarning.getAndSet(false);
             activeSessionConfig = null;
             if (consolePanel != null) {
                 consolePanel.setSessionActive(false);
@@ -108,11 +111,15 @@ public class FridaTracePlugin implements JadxPlugin {
             if (connectionPanel != null) {
                 connectionPanel.setSessionActive(false);
             }
+            if (!expectedExit) {
+                showWarning("Jarida connection lost. The Frida session ended.");
+            }
         });
     }
 
     @Override
     public void unload() {
+        markExpectedExit();
         fridaController.stop();
     }
 
@@ -337,6 +344,7 @@ public class FridaTracePlugin implements JadxPlugin {
                     consolePanel.setConnectionVisible(true);
                 }
             } else {
+                markExpectedExit();
                 fridaController.startWithScript(lastSessionConfig, script, this::appendLog);
                 activeSessionConfig = lastSessionConfig;
                 if (consolePanel != null) {
@@ -628,7 +636,21 @@ public class FridaTracePlugin implements JadxPlugin {
         appendLog(message);
     }
 
+    private void showWarning(String message) {
+        if (guiContext != null && guiContext.getMainFrame() != null) {
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(guiContext.getMainFrame(), message, "Jarida", JOptionPane.WARNING_MESSAGE));
+        }
+        appendLog(message);
+    }
+
+    private void markExpectedExit() {
+        if (fridaController.isRunning()) {
+            suppressExitWarning.set(true);
+        }
+    }
+
     private void stopTrace() {
+        markExpectedExit();
         fridaController.stop();
         activeSessionConfig = null;
         appendLog("Jarida trace stopped.");
