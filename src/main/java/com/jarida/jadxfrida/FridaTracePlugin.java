@@ -173,7 +173,8 @@ public class FridaTracePlugin implements JadxPlugin {
                     connectionPanel = new JaridaConnectionPanel(fridaController, lastSessionConfig, pkg,
                             this::applyConnectionConfig, this::startSessionFromConnection, this::stopTrace, this::savePathsConfig);
                     consoleNode = new FridaConsoleNode(this::removeHook, this::toggleHook, this::editHook, this::removeAllHooks,
-                            connectionPanel, version, this::applyCustomScriptsFromConsole, this::saveCustomScriptsFromConsole);
+                            connectionPanel, version, this::applyCustomScriptsFromConsole, this::saveCustomScriptsFromConsole,
+                            this::jumpToHook);
                 }
                 jadx.gui.ui.tab.TabsController controller = mainWindow.getTabsController();
                 controller.openTab(consoleNode);
@@ -895,6 +896,23 @@ public class FridaTracePlugin implements JadxPlugin {
             }
         }
         updateHighlights();
+    }
+
+    private void jumpToHook(HookRecord record) {
+        if (record == null || guiContext == null) {
+            return;
+        }
+        ICodeNodeRef ref = record.getNodeRef();
+        if (ref == null) {
+            showWarning("No source location available for this hook.");
+            return;
+        }
+        guiContext.uiRun(() -> {
+            boolean opened = guiContext.open(ref);
+            if (!opened) {
+                showWarning("Unable to open hook location in Jadx.");
+            }
+        });
     }
 
     private void removeAllHooks() {

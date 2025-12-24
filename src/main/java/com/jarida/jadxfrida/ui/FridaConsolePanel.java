@@ -13,11 +13,15 @@ import javax.swing.JTextField;
 import javax.swing.JTable;
 import javax.swing.JToolBar;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.swing.RowFilter;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.BorderLayout;
@@ -44,11 +48,13 @@ public class FridaConsolePanel extends ContentPanel {
     private final Consumer<HookRecord> onRemoveHook;
     private final Consumer<HookRecord> onToggleHook;
     private final Consumer<HookRecord> onEditHook;
+    private final Consumer<HookRecord> onJumpToHook;
     private final Runnable onRemoveAll;
     private final HookTableModel hooksModel = new HookTableModel();
     private final JTable hooksTable = new JTable(hooksModel);
     private final TableRowSorter<HookTableModel> hooksSorter = new TableRowSorter<>(hooksModel);
     private final JTextField hooksSearch = new JTextField(22);
+    private JScrollPane hooksScroll;
     private final JaridaConnectionPanel connectionPanel;
     private final String version;
     private final JTabbedPane tabs;
@@ -62,13 +68,15 @@ public class FridaConsolePanel extends ContentPanel {
                              String version,
                              Consumer<HookRecord> onRemoveHook, Consumer<HookRecord> onToggleHook,
                              Consumer<HookRecord> onEditHook, Runnable onRemoveAll,
-                             Consumer<String> onCustomScriptsChanged, Consumer<String> onCustomScriptsSaved) {
+                             Consumer<String> onCustomScriptsChanged, Consumer<String> onCustomScriptsSaved,
+                             Consumer<HookRecord> onJumpToHook) {
         super(tabbedPane, node);
         this.connectionPanel = connectionPanel;
         this.version = version;
         this.onRemoveHook = onRemoveHook;
         this.onToggleHook = onToggleHook;
         this.onEditHook = onEditHook;
+        this.onJumpToHook = onJumpToHook;
         this.onRemoveAll = onRemoveAll;
         this.hooksModel.setToggleHandler(onToggleHook);
         this.onCustomScriptsChanged = onCustomScriptsChanged;
@@ -102,32 +110,75 @@ public class FridaConsolePanel extends ContentPanel {
         hooksTable.getColumnModel().getColumn(0).setMaxWidth(90);
         hooksTable.getColumnModel().getColumn(0).setMinWidth(70);
         // Only two columns now: Enabled + Method
+        hooksTable.getSelectionModel().setSelectionMode(javax.swing.ListSelectionModel.SINGLE_SELECTION);
+        hooksTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
+            @Override
+            public void valueChanged(ListSelectionEvent e) {
+                // no-op placeholder to ensure selection model is initialized for focus clearing
+            }
+        });
+        hooksTable.setFocusable(true);
+        hooksTable.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusLost(java.awt.event.FocusEvent e) {
+                hooksTable.clearSelection();
+            }
+        });
+
+        JPopupMenu hooksMenu = new JPopupMenu();
+        JMenuItem editItem = new JMenuItem("Edit");
+        editItem.addActionListener(e -> editSelectedHook());
+        JMenuItem navigateItem = new JMenuItem("Navigate");
+        navigateItem.addActionListener(e -> jumpToSelectedHook());
+        JMenuItem enableItem = new JMenuItem("Enable");
+        enableItem.addActionListener(e -> setSelectedHooksActive(true));
+        JMenuItem disableItem = new JMenuItem("Disable");
+        disableItem.addActionListener(e -> setSelectedHooksActive(false));
+        JMenuItem removeItem = new JMenuItem("Remove");
+        removeItem.addActionListener(e -> removeSelectedHooks());
+
+        hooksMenu.add(editItem);
+        hooksMenu.add(navigateItem);
+        hooksMenu.addSeparator();
+        hooksMenu.add(enableItem);
+        hooksMenu.add(disableItem);
+        hooksMenu.add(removeItem);
+
         hooksTable.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() != 2) {
+            public void mousePressed(MouseEvent e) {
+                maybeShowHookMenu(e);
+                maybeClearSelection(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowHookMenu(e);
+                maybeClearSelection(e);
+            }
+
+            private void maybeShowHookMenu(MouseEvent e) {
+                if (!e.isPopupTrigger()) {
                     return;
                 }
                 int row = hooksTable.rowAtPoint(e.getPoint());
-                int col = hooksTable.columnAtPoint(e.getPoint());
-                if (col == 0) {
-                    return;
-                }
                 if (row >= 0) {
                     hooksTable.setRowSelectionInterval(row, row);
-                    editSelectedHook();
+                }
+                hooksMenu.show(e.getComponent(), e.getX(), e.getY());
+            }
+
+            private void maybeClearSelection(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    return;
+                }
+                int row = hooksTable.rowAtPoint(e.getPoint());
+                if (row < 0) {
+                    hooksTable.clearSelection();
                 }
             }
         });
 
-        JButton enableSelected = new JButton("Enable Selected");
-        enableSelected.addActionListener(e -> setSelectedHooksActive(true));
-        JButton disableSelected = new JButton("Disable Selected");
-        disableSelected.addActionListener(e -> setSelectedHooksActive(false));
-        JButton removeSelected = new JButton("Remove Selected");
-        removeSelected.addActionListener(e -> removeSelectedHooks());
-        JButton editSelected = new JButton("Edit Selected");
-        editSelected.addActionListener(e -> editSelectedHook());
         JButton enableAll = new JButton("Enable All");
         enableAll.addActionListener(e -> setAllHooksActive(true));
         JButton disableAll = new JButton("Disable All");
@@ -145,20 +196,11 @@ public class FridaConsolePanel extends ContentPanel {
         c.gridy = 0;
         c.gridx = 0;
         c.anchor = GridBagConstraints.WEST;
-        toolbar.add(enableSelected, c);
-        c.gridx++;
-        toolbar.add(disableSelected, c);
-        c.gridx++;
-        toolbar.add(removeSelected, c);
-        c.gridx++;
-        toolbar.add(editSelected, c);
-        c.gridx++;
         toolbar.add(enableAll, c);
         c.gridx++;
         toolbar.add(disableAll, c);
         c.gridx++;
         toolbar.add(removeAll, c);
-
         c.gridx++;
         c.weightx = 1;
         c.fill = GridBagConstraints.HORIZONTAL;
@@ -190,7 +232,22 @@ public class FridaConsolePanel extends ContentPanel {
 
         JPanel panel = new JPanel(new BorderLayout());
         panel.add(toolbar, BorderLayout.NORTH);
-        panel.add(new JScrollPane(hooksTable), BorderLayout.CENTER);
+        hooksTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        hooksScroll = new JScrollPane(hooksTable);
+        hooksScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        hooksScroll.getViewport().addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                hooksTable.clearSelection();
+            }
+        });
+        hooksScroll.getViewport().addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                updateHooksColumnWidth();
+            }
+        });
+        panel.add(hooksScroll, BorderLayout.CENTER);
         return panel;
     }
 
@@ -356,6 +413,22 @@ public class FridaConsolePanel extends ContentPanel {
         }
     }
 
+    private void jumpToSelectedHook() {
+        List<HookRecord> selected = getSelectedHooks();
+        if (selected.isEmpty()) {
+            showHookMessage("Select a hook to jump to.");
+            return;
+        }
+        if (selected.size() > 1) {
+            showHookMessage("Select a single hook to jump to.");
+            return;
+        }
+        HookRecord record = selected.get(0);
+        if (record != null && onJumpToHook != null) {
+            onJumpToHook.accept(record);
+        }
+    }
+
     public void appendScript(String script) {
         SwingUtilities.invokeLater(() -> {
             String current = scriptArea.getText();
@@ -372,6 +445,7 @@ public class FridaConsolePanel extends ContentPanel {
     public void updateHooks(List<HookRecord> hooks) {
         SwingUtilities.invokeLater(() -> {
             hooksModel.setHooks(hooks);
+            updateHooksColumnWidth();
         });
     }
 
@@ -384,6 +458,7 @@ public class FridaConsolePanel extends ContentPanel {
             logArea.setText("");
             scriptArea.setText("");
             hooksModel.setHooks(new java.util.ArrayList<>());
+            updateHooksColumnWidth();
         });
     }
 
@@ -397,6 +472,33 @@ public class FridaConsolePanel extends ContentPanel {
 
     private void showHookMessage(String message) {
         JOptionPane.showMessageDialog(this, message, "Jarida", JOptionPane.WARNING_MESSAGE);
+    }
+
+    private void updateHooksColumnWidth() {
+        if (hooksTable.getColumnModel().getColumnCount() < 2) {
+            return;
+        }
+        int viewportWidth = hooksScroll != null && hooksScroll.getViewport() != null
+                ? hooksScroll.getViewport().getWidth()
+                : hooksTable.getParent() != null ? hooksTable.getParent().getWidth() : 0;
+        int enabledColWidth = hooksTable.getColumnModel().getColumn(0).getWidth();
+        int minWidth = Math.max(0, viewportWidth - enabledColWidth);
+        int maxTextWidth = 0;
+        java.awt.FontMetrics fm = hooksTable.getFontMetrics(hooksTable.getFont());
+        for (HookRecord record : hooksModel.getHooks()) {
+            if (record == null) {
+                continue;
+            }
+            String text = record.getDisplay();
+            if (text == null) {
+                continue;
+            }
+            maxTextWidth = Math.max(maxTextWidth, fm.stringWidth(text));
+        }
+        int desired = Math.max(minWidth, maxTextWidth);
+        javax.swing.table.TableColumn methodCol = hooksTable.getColumnModel().getColumn(1);
+        methodCol.setMinWidth(minWidth);
+        methodCol.setPreferredWidth(desired);
     }
 
     private java.awt.Component buildConsolePanel() {
