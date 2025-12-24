@@ -13,6 +13,7 @@ import javax.swing.JTextField;
 import javax.swing.JTable;
 import javax.swing.JToolBar;
 import javax.swing.JPanel;
+import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingConstants;
 import javax.swing.RowFilter;
@@ -29,6 +30,8 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.FlowLayout;
 import java.awt.Toolkit;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.datatransfer.StringSelection;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +46,7 @@ public class FridaConsolePanel extends ContentPanel {
     private final JTextArea scriptArea;
     private final Consumer<HookRecord> onRemoveHook;
     private final Consumer<HookRecord> onToggleHook;
+    private final Consumer<HookRecord> onEditHook;
     private final Runnable onRemoveAll;
     private final HookTableModel hooksModel = new HookTableModel();
     private final JTable hooksTable = new JTable(hooksModel);
@@ -58,13 +62,15 @@ public class FridaConsolePanel extends ContentPanel {
 
     public FridaConsolePanel(TabbedPane tabbedPane, JNode node, JaridaConnectionPanel connectionPanel,
                              String version,
-                             Consumer<HookRecord> onRemoveHook, Consumer<HookRecord> onToggleHook, Runnable onRemoveAll,
+                             Consumer<HookRecord> onRemoveHook, Consumer<HookRecord> onToggleHook,
+                             Consumer<HookRecord> onEditHook, Runnable onRemoveAll,
                              Consumer<String> onCustomScriptsChanged) {
         super(tabbedPane, node);
         this.connectionPanel = connectionPanel;
         this.version = version;
         this.onRemoveHook = onRemoveHook;
         this.onToggleHook = onToggleHook;
+        this.onEditHook = onEditHook;
         this.onRemoveAll = onRemoveAll;
         this.hooksModel.setToggleHandler(onToggleHook);
         this.onCustomScriptsChanged = onCustomScriptsChanged;
@@ -97,6 +103,23 @@ public class FridaConsolePanel extends ContentPanel {
         hooksTable.getColumnModel().getColumn(0).setMaxWidth(90);
         hooksTable.getColumnModel().getColumn(0).setMinWidth(70);
         // Only two columns now: Enabled + Method
+        hooksTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() != 2) {
+                    return;
+                }
+                int row = hooksTable.rowAtPoint(e.getPoint());
+                int col = hooksTable.columnAtPoint(e.getPoint());
+                if (col == 0) {
+                    return;
+                }
+                if (row >= 0) {
+                    hooksTable.setRowSelectionInterval(row, row);
+                    editSelectedHook();
+                }
+            }
+        });
 
         JButton enableSelected = new JButton("Enable Selected");
         enableSelected.addActionListener(e -> setSelectedHooksActive(true));
@@ -104,6 +127,8 @@ public class FridaConsolePanel extends ContentPanel {
         disableSelected.addActionListener(e -> setSelectedHooksActive(false));
         JButton removeSelected = new JButton("Remove Selected");
         removeSelected.addActionListener(e -> removeSelectedHooks());
+        JButton editSelected = new JButton("Edit Selected");
+        editSelected.addActionListener(e -> editSelectedHook());
         JButton enableAll = new JButton("Enable All");
         enableAll.addActionListener(e -> setAllHooksActive(true));
         JButton disableAll = new JButton("Disable All");
@@ -126,6 +151,8 @@ public class FridaConsolePanel extends ContentPanel {
         toolbar.add(disableSelected, c);
         c.gridx++;
         toolbar.add(removeSelected, c);
+        c.gridx++;
+        toolbar.add(editSelected, c);
         c.gridx++;
         toolbar.add(enableAll, c);
         c.gridx++;
@@ -307,6 +334,22 @@ public class FridaConsolePanel extends ContentPanel {
         }
     }
 
+    private void editSelectedHook() {
+        List<HookRecord> selected = getSelectedHooks();
+        if (selected.isEmpty()) {
+            showHookMessage("Select a hook to edit.");
+            return;
+        }
+        if (selected.size() > 1) {
+            showHookMessage("Select a single hook to edit.");
+            return;
+        }
+        HookRecord record = selected.get(0);
+        if (record != null && onEditHook != null) {
+            onEditHook.accept(record);
+        }
+    }
+
     public void appendScript(String script) {
         SwingUtilities.invokeLater(() -> {
             String current = scriptArea.getText();
@@ -344,6 +387,10 @@ public class FridaConsolePanel extends ContentPanel {
                 connectionPanel.setSessionActive(active);
             }
         });
+    }
+
+    private void showHookMessage(String message) {
+        JOptionPane.showMessageDialog(this, message, "Jarida", JOptionPane.WARNING_MESSAGE);
     }
 
     private java.awt.Component buildConsolePanel() {

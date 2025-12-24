@@ -89,6 +89,7 @@ public class FridaConfigDialog extends JDialog {
     public FridaConfigDialog(JFrame owner, FridaController fridaController, MethodTarget target,
                              String defaultPackage, boolean patchDefault,
                              FridaSessionConfig initialConfig, ScriptOptions initialOptions,
+                             ReturnPatchRule initialReturnPatch,
                              String templateName, String templateContent, boolean templateAppendDefault,
                              TemplatePosition templatePositionDefault,
                              FridaSessionConfig fixedSessionConfig, boolean allowConnectionEdit,
@@ -141,6 +142,9 @@ public class FridaConfigDialog extends JDialog {
 
         applyInitial(initialConfig, initialOptions);
         applyTemplateInitial(templateName, templateContent, templateAppendDefault, templatePositionDefault);
+        if (showReturnTab && initialReturnPatch != null) {
+            returnPanel.setRule(initialReturnPatch);
+        }
 
         deviceMode.addActionListener(e -> updateDeviceMode());
         spawnRadio.addActionListener(e -> updateAttachMode());

@@ -8,6 +8,7 @@ import com.jarida.jadxfrida.model.HookSpec;
 import com.jarida.jadxfrida.model.MethodTarget;
 import com.jarida.jadxfrida.model.ReturnPatchRule;
 import com.jarida.jadxfrida.model.ScriptOptions;
+import com.jarida.jadxfrida.model.TemplatePosition;
 import com.jarida.jadxfrida.ui.FridaConfigDialog;
 import com.jarida.jadxfrida.ui.FridaConsolePanel;
 import com.jarida.jadxfrida.ui.FridaConsoleNode;
@@ -171,7 +172,7 @@ public class FridaTracePlugin implements JadxPlugin {
                     String version = getVersionString();
                     connectionPanel = new JaridaConnectionPanel(fridaController, lastSessionConfig, pkg,
                             this::applyConnectionConfig, this::startSessionFromConnection, this::stopTrace, this::savePathsConfig);
-                    consoleNode = new FridaConsoleNode(this::removeHook, this::toggleHook, this::removeAllHooks,
+                    consoleNode = new FridaConsoleNode(this::removeHook, this::toggleHook, this::editHook, this::removeAllHooks,
                             connectionPanel, version, this::applyCustomScriptsFromConsole);
                 }
                 jadx.gui.ui.tab.TabsController controller = mainWindow.getTabsController();
@@ -286,7 +287,7 @@ public class FridaTracePlugin implements JadxPlugin {
         }
         FridaSessionConfig fixedConfig = activeSessionConfig != null ? activeSessionConfig : lastSessionConfig;
         FridaConfigDialog dialog = new FridaConfigDialog(guiContext.getMainFrame(), fridaController, target, pkg,
-                patchDefault, lastSessionConfig, lastScriptOptions,
+                patchDefault, lastSessionConfig, lastScriptOptions, null,
                 pluginOptions.getTemplateName(), pluginOptions.getTemplateContent(), pluginOptions.isTemplateAppend(),
                 pluginOptions.getTemplatePosition(),
                 fixedConfig, false, showReturnTab, focusReturnTab);
@@ -312,7 +313,8 @@ public class FridaTracePlugin implements JadxPlugin {
             }
         }
         HookSpec spec = new HookSpec(target, lastScriptOptions, patchRule,
-                dialog.getExtraScript(), dialog.getTemplatePosition(), hookKey);
+                dialog.getExtraScript(), dialog.getTemplatePosition(), hookKey,
+                dialog.isTemplateAppend(), dialog.getTemplateName(), dialog.getTemplateContent());
         hookSpecs.put(hookKey, spec);
         String script = buildCombinedScript();
         boolean canReuseNow = fridaController.isRunning()
@@ -821,6 +823,65 @@ public class FridaTracePlugin implements JadxPlugin {
         record.setActive(false);
         reloadCombinedHooks();
         updateHooksUi();
+    }
+
+    private void editHook(HookRecord record) {
+        if (record == null) {
+            return;
+        }
+        HookSpec spec = hookSpecs.get(record.getKey());
+        if (spec == null) {
+            appendLog("Hook not found for editing.");
+            return;
+        }
+        MethodTarget target = spec.getTarget();
+        if (target == null) {
+            appendLog("Hook target not available.");
+            return;
+        }
+        String pkg = PackageNameResolver.resolvePackageName(decompiler);
+        if (pkg != null && !pkg.trim().isEmpty()) {
+            lastSessionConfig.setTargetPackage(pkg);
+        }
+        ReturnPatchRule initialRule = spec.getReturnPatchRule();
+        boolean patchDefault = initialRule != null && initialRule.isEnabled();
+        TemplatePosition templatePosition = spec.getTemplatePosition();
+        FridaSessionConfig fixedConfig = activeSessionConfig != null ? activeSessionConfig : lastSessionConfig;
+
+        FridaConfigDialog dialog = new FridaConfigDialog(guiContext.getMainFrame(), fridaController, target, pkg,
+                patchDefault, lastSessionConfig, spec.getOptions(), initialRule,
+                spec.getTemplateName(), spec.getTemplateContent(), spec.isTemplateEnabled(),
+                templatePosition, fixedConfig, false, true, false);
+        dialog.setVisible(true);
+        if (!dialog.isConfirmed()) {
+            return;
+        }
+
+        lastSessionConfig = dialog.getSessionConfig();
+        lastScriptOptions = dialog.getScriptOptions();
+        pluginOptions.updateFrom(lastSessionConfig, lastScriptOptions,
+                dialog.isTemplateAppend(), dialog.getTemplateName(), dialog.getTemplateContent());
+        pluginOptions.setTemplatePosition(dialog.getTemplatePosition());
+
+        HookSpec updated = new HookSpec(target, lastScriptOptions, dialog.getReturnPatchRule(),
+                dialog.getExtraScript(), dialog.getTemplatePosition(), record.getKey(),
+                dialog.isTemplateAppend(), dialog.getTemplateName(), dialog.getTemplateContent());
+        hookSpecs.put(record.getKey(), updated);
+
+        String script = buildCombinedScript();
+        if (consolePanel != null) {
+            consolePanel.setScript(script);
+        } else {
+            pendingScript = script;
+        }
+        if (fridaController.isRunning()) {
+            try {
+                fridaController.updateSessionScript(script, this::appendLog);
+            } catch (Exception e) {
+                appendLog("Failed to reload hooks: " + e.getMessage());
+            }
+        }
+        updateHighlights();
     }
 
     private void removeAllHooks() {

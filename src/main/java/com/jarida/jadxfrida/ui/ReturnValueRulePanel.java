@@ -4,6 +4,7 @@ import com.jarida.jadxfrida.model.ReturnPatchMode;
 import com.jarida.jadxfrida.model.ReturnPatchRule;
 
 import javax.swing.BorderFactory;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -17,6 +18,7 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 
 public class ReturnValueRulePanel extends JPanel {
+    private final JCheckBox enablePatch;
     private final JComboBox<ReturnPatchMode> mode;
     private final JTextField constantField;
     private final JTextArea expressionArea;
@@ -29,6 +31,7 @@ public class ReturnValueRulePanel extends JPanel {
 
     public ReturnValueRulePanel() {
         super(new BorderLayout());
+        enablePatch = new JCheckBox("Enable patch", true);
         mode = new JComboBox<>(ReturnPatchMode.values());
         constantField = new JTextField();
         expressionArea = new JTextArea(5, 40);
@@ -46,6 +49,8 @@ public class ReturnValueRulePanel extends JPanel {
         header.add(new JLabel("Mode:"), hc);
         hc.gridx = 1;
         header.add(mode, hc);
+        hc.gridx = 2;
+        header.add(enablePatch, hc);
 
         cardLayout = new CardLayout();
         cardPanel = new JPanel(cardLayout);
@@ -55,7 +60,9 @@ public class ReturnValueRulePanel extends JPanel {
         cardPanel.add(buildScriptPanel(), ReturnPatchMode.SCRIPT.name());
 
         mode.addActionListener(e -> updateMode());
+        enablePatch.addActionListener(e -> updateEnabledState());
         updateMode();
+        updateEnabledState();
 
         add(header, BorderLayout.NORTH);
         add(cardPanel, BorderLayout.CENTER);
@@ -123,9 +130,20 @@ public class ReturnValueRulePanel extends JPanel {
         }
     }
 
+    private void updateEnabledState() {
+        boolean enabled = enablePatch.isSelected();
+        mode.setEnabled(enabled);
+        constantField.setEnabled(enabled);
+        expressionArea.setEnabled(enabled);
+        conditionField.setEnabled(enabled);
+        thenField.setEnabled(enabled);
+        elseField.setEnabled(enabled);
+        scriptArea.setEnabled(enabled);
+    }
+
     public ReturnPatchRule toRule() {
         ReturnPatchRule rule = new ReturnPatchRule();
-        rule.setEnabled(true);
+        rule.setEnabled(enablePatch.isSelected());
         ReturnPatchMode selected = (ReturnPatchMode) mode.getSelectedItem();
         if (selected != null) {
             rule.setMode(selected);
@@ -140,6 +158,30 @@ public class ReturnValueRulePanel extends JPanel {
     }
 
     public void setEnabledDefault(boolean enable) {
-        // Toggle removed; patch is enabled when this panel is shown.
+        enablePatch.setSelected(enable);
+        updateEnabledState();
+    }
+
+    public void setRule(ReturnPatchRule rule) {
+        if (rule == null) {
+            return;
+        }
+        enablePatch.setSelected(rule.isEnabled());
+        ReturnPatchMode selected = rule.getMode();
+        if (selected != null) {
+            mode.setSelectedItem(selected);
+        }
+        constantField.setText(safe(rule.getConstantValue()));
+        expressionArea.setText(safe(rule.getExpression()));
+        conditionField.setText(safe(rule.getCondition()));
+        thenField.setText(safe(rule.getThenValue()));
+        elseField.setText(safe(rule.getElseValue()));
+        scriptArea.setText(safe(rule.getScriptBody()));
+        updateMode();
+        updateEnabledState();
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value;
     }
 }

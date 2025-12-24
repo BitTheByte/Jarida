@@ -55,6 +55,9 @@ public final class HookScriptGenerator {
             return "null";
         }
         String trimmed = val.trim();
+        if (trimmed.isEmpty()) {
+            return "null";
+        }
         if (trimmed.startsWith("js:") || trimmed.startsWith("raw:")) {
             return trimmed.substring(trimmed.indexOf(':') + 1).trim();
         }
