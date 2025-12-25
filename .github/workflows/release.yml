@@ -1,0 +1,66 @@
+name: Jarida Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Bump version
+        id: bump
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          pom = Path("pom.xml")
+          text = pom.read_text(encoding="utf-8")
+          m = re.search(r"(<version>)(\d+\.\d+\.\d+)(</version>)", text)
+          if not m:
+            raise SystemExit("Version not found in pom.xml")
+          major, minor, patch = map(int, m.group(2).split("."))
+          patch += 1
+          new_version = f"{major}.{minor}.{patch}"
+          text = text[:m.start(2)] + new_version + text[m.end(2):]
+          pom.write_text(text, encoding="utf-8")
+          print(new_version)
+          out = os.environ.get("GITHUB_OUTPUT")
+          if out:
+            with open(out, "a", encoding="utf-8") as f:
+              f.write(f"version={new_version}\n")
+          PY
+
+      - name: Build
+        run: mvn -DskipTests package
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pom.xml
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}" || exit 0
+          git tag "${{ steps.bump.outputs.version }}"
+          git push origin HEAD --tags
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.version }}
+          name: Jarida ${{ steps.bump.outputs.version }}
+          files: target/jarida-${{ steps.bump.outputs.version }}.jar
