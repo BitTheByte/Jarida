@@ -98,9 +98,6 @@ public class FridaTracePlugin implements JadxPlugin {
         loadSavedPaths();
         if (guiContext != null) {
             initGui();
-            guiContext.settings().setCustomSettingsGroup(
-                    guiContext.settings().buildSettingsGroupForOptions("Jarida", pluginOptions.getOptionsDescriptions())
-            );
         }
         fridaController.setOnExit(code -> {
             boolean expectedExit = suppressExitWarning.getAndSet(false);
