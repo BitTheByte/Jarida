@@ -122,7 +122,7 @@ public class FridaTracePlugin implements JadxPlugin {
     }
 
     private void initGui() {
-        guiContext.addMenuAction("Jarida: Open Console", this::openConsole);
+        guiContext.addMenuAction("Jarida Console", this::openConsole);
 
         guiContext.addPopupMenuAction(
                 "Jarida: Start Tracing",
