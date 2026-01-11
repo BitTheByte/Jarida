@@ -65,7 +65,6 @@ public class FridaTracePlugin implements JadxPlugin {
     private final java.util.Map<String, HookSpec> hookSpecs = new java.util.LinkedHashMap<>();
     private final Map<Object, List<Object>> highlightTags = new WeakHashMap<>();
     private boolean highlightListenerInstalled = false;
-    private static final Color HOOK_HIGHLIGHT = new Color(78, 145, 90, 70);
     private final AtomicBoolean suppressExitWarning = new AtomicBoolean(false);
 
     private FridaSessionConfig lastSessionConfig = new FridaSessionConfig();
@@ -92,6 +91,7 @@ public class FridaTracePlugin implements JadxPlugin {
         this.decompiler = context.getDecompiler();
         this.guiContext = context.getGuiContext();
         this.pluginOptions = new FridaPluginOptions();
+        this.pluginOptions.setHighlightColorChangeListener(this::updateHighlights);
         context.registerOptions(pluginOptions);
         this.lastSessionConfig = pluginOptions.toSessionConfig();
         this.lastScriptOptions = pluginOptions.toScriptOptions();
@@ -126,14 +126,14 @@ public class FridaTracePlugin implements JadxPlugin {
 
         guiContext.addPopupMenuAction(
                 "Jarida: Start Tracing",
-                ref -> resolveMethod(ref) != null,
+                ref -> resolveMethodForPopup(ref) != null,
                 null,
                 ref -> openSettings(ref, false, false, false, true)
         );
 
         guiContext.addPopupMenuAction(
                 "Jarida: Patch Return Value",
-                ref -> resolveMethod(ref) != null,
+                ref -> resolveMethodForPopup(ref) != null,
                 null,
                 ref -> openSettings(ref, true, true, true, true)
         );
@@ -805,8 +805,12 @@ public class FridaTracePlugin implements JadxPlugin {
         updateHighlights();
     }
 
+    private MethodTarget resolveMethodForPopup(ICodeNodeRef ref) {
+        return MethodResolver.resolve(decompiler, ref);
+    }
+
     private boolean isMethodTraced(ICodeNodeRef ref) {
-        MethodTarget target = resolveMethod(ref);
+        MethodTarget target = resolveMethodForPopup(ref);
         if (target == null) {
             return false;
         }
@@ -815,7 +819,7 @@ public class FridaTracePlugin implements JadxPlugin {
     }
 
     private void stopTracing(ICodeNodeRef ref) {
-        MethodTarget target = resolveMethod(ref);
+        MethodTarget target = resolveMethodForPopup(ref);
         if (target == null) {
             return;
         }
@@ -1035,6 +1039,7 @@ public class FridaTracePlugin implements JadxPlugin {
             return;
         }
         Runnable task = () -> {
+            clearAllHighlights();
             JFrame frame = guiContext.getMainFrame();
             if (!(frame instanceof MainWindow)) {
                 return;
@@ -1055,7 +1060,6 @@ public class FridaTracePlugin implements JadxPlugin {
                 if (area == null) {
                     continue;
                 }
-                clearHighlights(area);
                 if (activeRefs.isEmpty()) {
                     continue;
                 }
@@ -1071,6 +1075,7 @@ public class FridaTracePlugin implements JadxPlugin {
                 if (map == null || map.isEmpty()) {
                     continue;
                 }
+                Color highlight = getHookHighlightColor();
                 List<Object> tags = new ArrayList<>();
                 for (Map.Entry<Integer, ICodeAnnotation> entry : map.entrySet()) {
                     ICodeAnnotation ann = entry.getValue();
@@ -1085,7 +1090,7 @@ public class FridaTracePlugin implements JadxPlugin {
                     if (line == null) {
                         continue;
                     }
-                    Object tag = addLineHighlight(area, line, HOOK_HIGHLIGHT);
+                    Object tag = addLineHighlight(area, line, highlight);
                     if (tag != null) {
                         tags.add(tag);
                     }
@@ -1109,6 +1114,24 @@ public class FridaTracePlugin implements JadxPlugin {
         }
         for (Object tag : tags) {
             removeLineHighlight(area, tag);
+        }
+    }
+
+    private void clearAllHighlights() {
+        if (highlightTags.isEmpty()) {
+            return;
+        }
+        Map<Object, List<Object>> snapshot = new java.util.HashMap<>(highlightTags);
+        highlightTags.clear();
+        for (Map.Entry<Object, List<Object>> entry : snapshot.entrySet()) {
+            Object area = entry.getKey();
+            List<Object> tags = entry.getValue();
+            if (area == null || tags == null) {
+                continue;
+            }
+            for (Object tag : tags) {
+                removeLineHighlight(area, tag);
+            }
         }
     }
 
@@ -1166,5 +1189,12 @@ public class FridaTracePlugin implements JadxPlugin {
             method.invoke(area, tag);
         } catch (Exception ignored) {
         }
+    }
+
+    private Color getHookHighlightColor() {
+        if (pluginOptions == null) {
+            return FridaPluginOptions.defaultHighlightColor();
+        }
+        return pluginOptions.getHighlightColor();
     }
 }
