@@ -169,7 +169,8 @@ public class FridaTracePlugin implements JadxPlugin {
                     String version = getVersionString();
                     connectionPanel = new JaridaConnectionPanel(fridaController, lastSessionConfig, pkg,
                             this::applyConnectionConfig, this::startSessionFromConnection, this::stopTrace, this::savePathsConfig);
-                    consoleNode = new FridaConsoleNode(this::removeHook, this::toggleHook, this::editHook, this::removeAllHooks,
+                    consoleNode = new FridaConsoleNode(this::removeHook, this::setHookActive, this::setHooksActive,
+                            this::editHook, this::removeAllHooks,
                             connectionPanel, version, this::applyCustomScriptsFromConsole, this::saveCustomScriptsFromConsole,
                             this::jumpToHook);
                 }
@@ -926,15 +927,17 @@ public class FridaTracePlugin implements JadxPlugin {
     }
 
     private void reloadCombinedHooks() {
+        String script = buildCombinedScript();
+        if (consolePanel != null) {
+            consolePanel.setScript(script);
+        } else {
+            pendingScript = script;
+        }
         if (!fridaController.isRunning()) {
             return;
         }
         try {
-            String script = buildCombinedScript();
             fridaController.updateSessionScript(script, this::appendLog);
-            if (consolePanel != null) {
-                consolePanel.setScript(script);
-            }
         } catch (Exception e) {
             appendLog("Failed to reload hooks: " + e.getMessage());
         }
@@ -1011,13 +1014,33 @@ public class FridaTracePlugin implements JadxPlugin {
         return entries;
     }
 
-    private void toggleHook(HookRecord record) {
+    private void setHookActive(HookRecord record, boolean active) {
         if (record == null) {
             return;
         }
-        record.setActive(!record.isActive());
+        if (record.isActive() == active) {
+            return;
+        }
+        record.setActive(active);
         reloadCombinedHooks();
         updateHooksUi();
+    }
+
+    private void setHooksActive(java.util.List<HookRecord> records, boolean active) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        boolean changed = false;
+        for (HookRecord record : records) {
+            if (record != null && record.isActive() != active) {
+                record.setActive(active);
+                changed = true;
+            }
+        }
+        if (changed) {
+            reloadCombinedHooks();
+            updateHooksUi();
+        }
     }
 
     private void installHighlightListener() {

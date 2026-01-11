@@ -8,13 +8,15 @@ import jadx.gui.ui.tab.TabbedPane;
 import jadx.gui.utils.Icons;
 
 import javax.swing.Icon;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public class FridaConsoleNode extends JNode {
     private FridaConsolePanel panel;
     private final JaridaConnectionPanel connectionPanel;
     private final Consumer<HookRecord> onRemoveHook;
-    private final Consumer<HookRecord> onToggleHook;
+    private final BiConsumer<HookRecord, Boolean> onSetHookActive;
+    private final BiConsumer<java.util.List<HookRecord>, Boolean> onSetHooksActive;
     private final Consumer<HookRecord> onEditHook;
     private final Consumer<HookRecord> onJumpToHook;
     private final Runnable onRemoveAll;
@@ -23,7 +25,8 @@ public class FridaConsoleNode extends JNode {
     private final Consumer<String> onCustomScriptsSaved;
 
     public FridaConsoleNode(Consumer<HookRecord> onRemoveHook,
-                            Consumer<HookRecord> onToggleHook,
+                            BiConsumer<HookRecord, Boolean> onSetHookActive,
+                            BiConsumer<java.util.List<HookRecord>, Boolean> onSetHooksActive,
                             Consumer<HookRecord> onEditHook,
                             Runnable onRemoveAll,
                             JaridaConnectionPanel connectionPanel, String version,
@@ -31,7 +34,8 @@ public class FridaConsoleNode extends JNode {
                             Consumer<String> onCustomScriptsSaved,
                             Consumer<HookRecord> onJumpToHook) {
         this.onRemoveHook = onRemoveHook;
-        this.onToggleHook = onToggleHook;
+        this.onSetHookActive = onSetHookActive;
+        this.onSetHooksActive = onSetHooksActive;
         this.onEditHook = onEditHook;
         this.onJumpToHook = onJumpToHook;
         this.onRemoveAll = onRemoveAll;
@@ -65,7 +69,7 @@ public class FridaConsoleNode extends JNode {
     public ContentPanel getContentPanel(TabbedPane tabbedPane) {
         if (panel == null || panel.getTabbedPane() != tabbedPane) {
             panel = new FridaConsolePanel(tabbedPane, this, connectionPanel, version,
-                    onRemoveHook, onToggleHook, onEditHook, onRemoveAll,
+                    onRemoveHook, onSetHookActive, onSetHooksActive, onEditHook, onRemoveAll,
                     onCustomScriptsChanged, onCustomScriptsSaved, onJumpToHook);
         }
         return panel;

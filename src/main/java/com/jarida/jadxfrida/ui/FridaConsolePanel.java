@@ -20,6 +20,8 @@ import javax.swing.SwingUtilities;
 import javax.swing.RowFilter;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.TableModelEvent;
+import javax.swing.event.TableModelListener;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.BorderLayout;
@@ -34,6 +36,7 @@ import java.awt.event.MouseEvent;
 import java.awt.datatransfer.StringSelection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import javax.swing.JSplitPane;
 import javax.swing.JLabel;
@@ -44,7 +47,8 @@ public class FridaConsolePanel extends ContentPanel {
     private final JTextArea logArea;
     private final JTextArea scriptArea;
     private final Consumer<HookRecord> onRemoveHook;
-    private final Consumer<HookRecord> onToggleHook;
+    private final BiConsumer<HookRecord, Boolean> onSetHookActive;
+    private final BiConsumer<List<HookRecord>, Boolean> onSetHooksActive;
     private final Consumer<HookRecord> onEditHook;
     private final Consumer<HookRecord> onJumpToHook;
     private final Runnable onRemoveAll;
@@ -64,7 +68,9 @@ public class FridaConsolePanel extends ContentPanel {
 
     public FridaConsolePanel(TabbedPane tabbedPane, JNode node, JaridaConnectionPanel connectionPanel,
                              String version,
-                             Consumer<HookRecord> onRemoveHook, Consumer<HookRecord> onToggleHook,
+                             Consumer<HookRecord> onRemoveHook,
+                             BiConsumer<HookRecord, Boolean> onSetHookActive,
+                             BiConsumer<List<HookRecord>, Boolean> onSetHooksActive,
                              Consumer<HookRecord> onEditHook, Runnable onRemoveAll,
                              Consumer<String> onCustomScriptsChanged, Consumer<String> onCustomScriptsSaved,
                              Consumer<HookRecord> onJumpToHook) {
@@ -72,13 +78,20 @@ public class FridaConsolePanel extends ContentPanel {
         this.connectionPanel = connectionPanel;
         this.version = version;
         this.onRemoveHook = onRemoveHook;
-        this.onToggleHook = onToggleHook;
+        this.onSetHookActive = onSetHookActive;
+        this.onSetHooksActive = onSetHooksActive;
         this.onEditHook = onEditHook;
         this.onJumpToHook = onJumpToHook;
         this.onRemoveAll = onRemoveAll;
-        this.hooksModel.setToggleHandler(onToggleHook);
+        this.hooksModel.setToggleHandler(onSetHookActive);
         this.onCustomScriptsChanged = onCustomScriptsChanged;
         this.onCustomScriptsSaved = onCustomScriptsSaved;
+        this.customScriptsModel.addTableModelListener(new TableModelListener() {
+            @Override
+            public void tableChanged(TableModelEvent e) {
+                applyCustomScripts();
+            }
+        });
         setLayout(new BorderLayout());
         logArea = new JTextArea();
         logArea.setEditable(false);
@@ -334,18 +347,27 @@ public class FridaConsolePanel extends ContentPanel {
         if (selected.isEmpty()) {
             return;
         }
-        for (HookRecord record : selected) {
-            if (record != null && record.isActive() != active && onToggleHook != null) {
-                onToggleHook.accept(record);
-            }
-        }
+        applyHookActive(selected, active);
     }
 
     private void setAllHooksActive(boolean active) {
-        List<HookRecord> all = hooksModel.getHooks();
-        for (HookRecord record : all) {
-            if (record != null && record.isActive() != active && onToggleHook != null) {
-                onToggleHook.accept(record);
+        applyHookActive(hooksModel.getHooks(), active);
+    }
+
+    private void applyHookActive(List<HookRecord> records, boolean active) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        if (onSetHooksActive != null) {
+            onSetHooksActive.accept(records, active);
+            return;
+        }
+        if (onSetHookActive == null) {
+            return;
+        }
+        for (HookRecord record : records) {
+            if (record != null && record.isActive() != active) {
+                onSetHookActive.accept(record, active);
             }
         }
     }
@@ -536,11 +558,8 @@ public class FridaConsolePanel extends ContentPanel {
         pathsPanel.add(controls, BorderLayout.SOUTH);
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        JButton applyCustom = new JButton("Apply Custom Scripts");
-        applyCustom.addActionListener(e -> applyCustomScripts());
         JButton saveCustom = new JButton("Save Custom Scripts");
         saveCustom.addActionListener(e -> saveCustomScripts());
-        actions.add(applyCustom);
         actions.add(saveCustom);
 
         customPanel.add(pathsPanel, BorderLayout.CENTER);
@@ -595,9 +614,9 @@ public class FridaConsolePanel extends ContentPanel {
     private static final class HookTableModel extends AbstractTableModel {
         private final String[] columns = {"Enabled", "Method"};
         private final List<HookRecord> hooks = new ArrayList<>();
-        private Consumer<HookRecord> toggleHandler;
+        private BiConsumer<HookRecord, Boolean> toggleHandler;
 
-        public void setToggleHandler(Consumer<HookRecord> toggleHandler) {
+        public void setToggleHandler(BiConsumer<HookRecord, Boolean> toggleHandler) {
             this.toggleHandler = toggleHandler;
         }
 
@@ -675,7 +694,7 @@ public class FridaConsolePanel extends ContentPanel {
             }
             boolean desired = Boolean.TRUE.equals(aValue);
             if (record.isActive() != desired && toggleHandler != null) {
-                toggleHandler.accept(record);
+                toggleHandler.accept(record, desired);
             }
         }
     }
