@@ -8,6 +8,7 @@ import jadx.gui.ui.tab.TabbedPane;
 import javax.swing.JButton;
 import javax.swing.JScrollPane;
 import javax.swing.JTabbedPane;
+import javax.swing.JTextPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JTable;
@@ -18,13 +19,21 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.swing.RowFilter;
+import javax.swing.JScrollBar;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableRowSorter;
+import javax.swing.text.DefaultCaret;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.SimpleAttributeSet;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -35,7 +44,10 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.datatransfer.StringSelection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import javax.swing.JSplitPane;
@@ -44,7 +56,7 @@ import javax.swing.JFileChooser;
 import java.io.File;
 
 public class FridaConsolePanel extends ContentPanel {
-    private final JTextArea logArea;
+    private final JTextPane logArea;
     private final JTextArea scriptArea;
     private final Consumer<HookRecord> onRemoveHook;
     private final BiConsumer<HookRecord, Boolean> onSetHookActive;
@@ -65,6 +77,28 @@ public class FridaConsolePanel extends ContentPanel {
     private final Consumer<String> onCustomScriptsSaved;
     private final CustomScriptsTableModel customScriptsModel = new CustomScriptsTableModel();
     private final JTable customScriptsTable = new JTable(customScriptsModel);
+    private JScrollPane logScroll;
+    private volatile boolean autoScrollEnabled = true;
+    private final AnsiState ansiState = new AnsiState();
+    private final Map<AnsiStyleKey, AttributeSet> styleCache = new HashMap<>();
+    private static final Color[] ANSI_COLORS = {
+            new Color(0, 0, 0),
+            new Color(170, 0, 0),
+            new Color(0, 170, 0),
+            new Color(170, 85, 0),
+            new Color(0, 0, 170),
+            new Color(170, 0, 170),
+            new Color(0, 170, 170),
+            new Color(170, 170, 170),
+            new Color(85, 85, 85),
+            new Color(255, 85, 85),
+            new Color(85, 255, 85),
+            new Color(255, 255, 85),
+            new Color(85, 85, 255),
+            new Color(255, 85, 255),
+            new Color(85, 255, 255),
+            new Color(255, 255, 255)
+    };
 
     public FridaConsolePanel(TabbedPane tabbedPane, JNode node, JaridaConnectionPanel connectionPanel,
                              String version,
@@ -93,9 +127,11 @@ public class FridaConsolePanel extends ContentPanel {
             }
         });
         setLayout(new BorderLayout());
-        logArea = new JTextArea();
+        logArea = new JTextPane();
         logArea.setEditable(false);
         logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        DefaultCaret caret = (DefaultCaret) logArea.getCaret();
+        caret.setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
 
         scriptArea = new JTextArea();
         scriptArea.setEditable(false);
@@ -226,11 +262,47 @@ public class FridaConsolePanel extends ContentPanel {
         return panel;
     }
 
+    private static final int MAX_LOG_LENGTH = 500000;
+
     public void appendLog(String line) {
         SwingUtilities.invokeLater(() -> {
-            logArea.append(line + "\n");
-            logArea.setCaretPosition(logArea.getDocument().getLength());
+            trimLogIfNeeded();
+            appendAnsi(line + "\n");
+            if (autoScrollEnabled) {
+                SwingUtilities.invokeLater(this::scrollLogToBottom);
+            }
         });
+    }
+
+    private void trimLogIfNeeded() {
+        StyledDocument doc = logArea.getStyledDocument();
+        int len = doc.getLength();
+        if (len > MAX_LOG_LENGTH) {
+            try {
+                int removeLen = len - MAX_LOG_LENGTH + MAX_LOG_LENGTH / 4;
+                doc.remove(0, removeLen);
+            } catch (BadLocationException ignored) {
+            }
+        }
+    }
+
+    private void scrollLogToBottom() {
+        JScrollBar bar = logScroll.getVerticalScrollBar();
+        if (bar != null) {
+            bar.setValue(bar.getMaximum());
+        }
+    }
+
+    private void updateAutoScroll() {
+        JScrollBar bar = logScroll.getVerticalScrollBar();
+        if (bar == null || !bar.isVisible()) {
+            autoScrollEnabled = true;
+            return;
+        }
+        int value = bar.getValue();
+        int extent = bar.getModel().getExtent();
+        int max = bar.getMaximum();
+        autoScrollEnabled = (value + extent >= max - 50);
     }
 
     public void setScript(String script) {
@@ -434,11 +506,19 @@ public class FridaConsolePanel extends ContentPanel {
     }
 
     public void clearLog() {
-        SwingUtilities.invokeLater(() -> logArea.setText(""));
+        SwingUtilities.invokeLater(() -> {
+            ansiState.reset();
+            styleCache.clear();
+            autoScrollEnabled = true;
+            logArea.setText("");
+        });
     }
 
     public void clearAll() {
         SwingUtilities.invokeLater(() -> {
+            ansiState.reset();
+            styleCache.clear();
+            autoScrollEnabled = true;
             logArea.setText("");
             scriptArea.setText("");
             hooksModel.setHooks(new java.util.ArrayList<>());
@@ -496,8 +576,220 @@ public class FridaConsolePanel extends ContentPanel {
         toolBar.add(clearButton);
         toolBar.add(copyLog);
         panel.add(toolBar, BorderLayout.NORTH);
-        panel.add(new JScrollPane(logArea), BorderLayout.CENTER);
+        logScroll = new JScrollPane(logArea);
+        // Detect user scrolling via mouse wheel
+        logScroll.addMouseWheelListener(e -> {
+            if (e.getWheelRotation() < 0) {
+                // Scrolling up - disable auto-scroll
+                autoScrollEnabled = false;
+            } else {
+                // Scrolling down - check if at bottom
+                updateAutoScroll();
+            }
+        });
+        // Detect user dragging scrollbar
+        logScroll.getVerticalScrollBar().addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                updateAutoScroll();
+            }
+        });
+        panel.add(logScroll, BorderLayout.CENTER);
         return panel;
+    }
+
+    private void appendAnsi(String text) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        StyledDocument doc = logArea.getStyledDocument();
+        StringBuilder buffer = new StringBuilder();
+        int idx = 0;
+        while (idx < text.length()) {
+            char ch = text.charAt(idx);
+            if (ch == '\u001B' && idx + 1 < text.length() && text.charAt(idx + 1) == '[') {
+                int end = text.indexOf('m', idx + 2);
+                if (end == -1) {
+                    buffer.append(ch);
+                    idx++;
+                    continue;
+                }
+                if (buffer.length() > 0) {
+                    insertStyled(doc, buffer.toString());
+                    buffer.setLength(0);
+                }
+                String codeStr = text.substring(idx + 2, end);
+                applyAnsiCodes(codeStr);
+                idx = end + 1;
+            } else {
+                buffer.append(ch);
+                idx++;
+            }
+        }
+        if (buffer.length() > 0) {
+            insertStyled(doc, buffer.toString());
+        }
+    }
+
+    private void insertStyled(StyledDocument doc, String text) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        AttributeSet attrs = getAttributesForState();
+        try {
+            doc.insertString(doc.getLength(), text, attrs);
+        } catch (BadLocationException ignored) {
+        }
+    }
+
+    private AttributeSet getAttributesForState() {
+        // Handle inverse mode by swapping fg and bg
+        Color fg = ansiState.inverse ? ansiState.bg : ansiState.fg;
+        Color bg = ansiState.inverse ? ansiState.fg : ansiState.bg;
+        AnsiStyleKey key = new AnsiStyleKey(fg, bg, ansiState.bold, ansiState.italic,
+                ansiState.underline, ansiState.strikethrough);
+        AttributeSet cached = styleCache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        SimpleAttributeSet attrs = new SimpleAttributeSet();
+        Font font = logArea.getFont();
+        if (font != null) {
+            StyleConstants.setFontFamily(attrs, font.getFamily());
+            StyleConstants.setFontSize(attrs, font.getSize());
+        }
+        StyleConstants.setBold(attrs, key.bold);
+        StyleConstants.setItalic(attrs, key.italic);
+        StyleConstants.setUnderline(attrs, key.underline);
+        StyleConstants.setStrikeThrough(attrs, key.strikethrough);
+        if (key.fg != null) {
+            StyleConstants.setForeground(attrs, key.fg);
+        }
+        if (key.bg != null) {
+            StyleConstants.setBackground(attrs, key.bg);
+        }
+        styleCache.put(key, attrs);
+        return attrs;
+    }
+
+    private void applyAnsiCodes(String codeStr) {
+        int[] codes = parseAnsiCodes(codeStr);
+        applyAnsiCodes(codes);
+    }
+
+    private int[] parseAnsiCodes(String codeStr) {
+        if (codeStr == null || codeStr.isEmpty()) {
+            return new int[]{0};
+        }
+        String[] parts = codeStr.split(";");
+        List<Integer> codes = new ArrayList<>();
+        for (String part : parts) {
+            if (part == null || part.isEmpty()) {
+                continue;
+            }
+            try {
+                codes.add(Integer.parseInt(part));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (codes.isEmpty()) {
+            return new int[]{0};
+        }
+        int[] out = new int[codes.size()];
+        for (int i = 0; i < codes.size(); i++) {
+            out[i] = codes.get(i);
+        }
+        return out;
+    }
+
+    private void applyAnsiCodes(int[] codes) {
+        int i = 0;
+        if (codes == null || codes.length == 0) {
+            ansiState.reset();
+            return;
+        }
+        while (i < codes.length) {
+            int code = codes[i];
+            if (code == 0) {
+                ansiState.reset();
+            } else if (code == 1) {
+                ansiState.bold = true;
+            } else if (code == 22) {
+                ansiState.bold = false;
+            } else if (code == 3) {
+                ansiState.italic = true;
+            } else if (code == 23) {
+                ansiState.italic = false;
+            } else if (code == 4) {
+                ansiState.underline = true;
+            } else if (code == 24) {
+                ansiState.underline = false;
+            } else if (code == 7) {
+                ansiState.inverse = true;
+            } else if (code == 27) {
+                ansiState.inverse = false;
+            } else if (code == 9) {
+                ansiState.strikethrough = true;
+            } else if (code == 29) {
+                ansiState.strikethrough = false;
+            } else if (code == 39) {
+                ansiState.fg = null;
+            } else if (code == 49) {
+                ansiState.bg = null;
+            } else if (code == 38) {
+                if (i + 1 < codes.length && codes[i + 1] == 5 && i + 2 < codes.length) {
+                    ansiState.fg = xtermColor(codes[i + 2]);
+                    i += 2;
+                } else if (i + 1 < codes.length && codes[i + 1] == 2 && i + 4 < codes.length) {
+                    ansiState.fg = new Color(clampColor(codes[i + 2]), clampColor(codes[i + 3]), clampColor(codes[i + 4]));
+                    i += 4;
+                }
+            } else if (code == 48) {
+                if (i + 1 < codes.length && codes[i + 1] == 5 && i + 2 < codes.length) {
+                    ansiState.bg = xtermColor(codes[i + 2]);
+                    i += 2;
+                } else if (i + 1 < codes.length && codes[i + 1] == 2 && i + 4 < codes.length) {
+                    ansiState.bg = new Color(clampColor(codes[i + 2]), clampColor(codes[i + 3]), clampColor(codes[i + 4]));
+                    i += 4;
+                }
+            } else if (code >= 30 && code <= 37) {
+                ansiState.fg = ANSI_COLORS[code - 30];
+            } else if (code >= 90 && code <= 97) {
+                ansiState.fg = ANSI_COLORS[code - 90 + 8];
+            } else if (code >= 40 && code <= 47) {
+                ansiState.bg = ANSI_COLORS[code - 40];
+            } else if (code >= 100 && code <= 107) {
+                ansiState.bg = ANSI_COLORS[code - 100 + 8];
+            }
+            i++;
+        }
+    }
+
+    private static int clampColor(int value) {
+        return Math.max(0, Math.min(255, value));
+    }
+
+    private static Color xtermColor(int value) {
+        int idx = Math.max(0, Math.min(255, value));
+        if (idx < 16) {
+            return ANSI_COLORS[idx];
+        }
+        if (idx <= 231) {
+            int c = idx - 16;
+            int r = c / 36;
+            int g = (c / 6) % 6;
+            int b = c % 6;
+            return new Color(toXtermComponent(r), toXtermComponent(g), toXtermComponent(b));
+        }
+        int gray = 8 + (idx - 232) * 10;
+        return new Color(gray, gray, gray);
+    }
+
+    private static int toXtermComponent(int value) {
+        if (value <= 0) {
+            return 0;
+        }
+        return 55 + value * 40;
     }
 
     private java.awt.Component buildScriptPanel() {
@@ -609,6 +901,66 @@ public class FridaConsolePanel extends ContentPanel {
         panel.add(new JLabel("github.com/BitTheByte/Jarida"), c);
 
         return panel;
+    }
+
+    private static final class AnsiState {
+        private Color fg;
+        private Color bg;
+        private boolean bold;
+        private boolean italic;
+        private boolean underline;
+        private boolean strikethrough;
+        private boolean inverse;
+
+        private void reset() {
+            fg = null;
+            bg = null;
+            bold = false;
+            italic = false;
+            underline = false;
+            strikethrough = false;
+            inverse = false;
+        }
+    }
+
+    private static final class AnsiStyleKey {
+        private final Color fg;
+        private final Color bg;
+        private final boolean bold;
+        private final boolean italic;
+        private final boolean underline;
+        private final boolean strikethrough;
+
+        private AnsiStyleKey(Color fg, Color bg, boolean bold, boolean italic, boolean underline, boolean strikethrough) {
+            this.fg = fg;
+            this.bg = bg;
+            this.bold = bold;
+            this.italic = italic;
+            this.underline = underline;
+            this.strikethrough = strikethrough;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof AnsiStyleKey)) {
+                return false;
+            }
+            AnsiStyleKey other = (AnsiStyleKey) obj;
+            return bold == other.bold
+                    && italic == other.italic
+                    && underline == other.underline
+                    && strikethrough == other.strikethrough
+                    && Objects.equals(fg, other.fg)
+                    && Objects.equals(bg, other.bg);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(fg, bg, bold, italic, underline, strikethrough);
+        }
     }
 
     private static final class HookTableModel extends AbstractTableModel {
