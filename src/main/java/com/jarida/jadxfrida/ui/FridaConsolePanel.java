@@ -262,7 +262,7 @@ public class FridaConsolePanel extends ContentPanel {
         return panel;
     }
 
-    private static final int MAX_LOG_LENGTH = 500000;
+    private static final int MAX_LOG_LENGTH = 2000000;
 
     public void appendLog(String line) {
         SwingUtilities.invokeLater(() -> {
