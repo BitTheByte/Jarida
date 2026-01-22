@@ -14,7 +14,7 @@ import java.awt.Color;
 public class FridaPluginOptions extends BasePluginOptionsBuilder {
     private static final String PREFIX = "jarida.";
     private static final String HIGHLIGHT_COLOR_KEY = PREFIX + "traceHighlightColor";
-    private static final TraceHighlightColor DEFAULT_HIGHLIGHT_COLOR = TraceHighlightColor.GREEN;
+    private static final TraceHighlightColor DEFAULT_HIGHLIGHT_COLOR = TraceHighlightColor.RED;
     private static final DeviceMode DEFAULT_DEVICE_MODE = DeviceMode.USB;
     private static final String DEFAULT_DEVICE_ID = "";
     private static final String DEFAULT_REMOTE_HOST = "127.0.0.1";

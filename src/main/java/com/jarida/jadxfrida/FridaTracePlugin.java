@@ -245,13 +245,22 @@ public class FridaTracePlugin implements JadxPlugin {
     private void openSettings(ICodeNodeRef ref, boolean patchDefault, boolean showReturnTab,
                               boolean focusReturnTab, boolean requireConnection) {
         if (requireConnection && !fridaController.isRunning()) {
-            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                    guiContext.getMainFrame(),
+            JFrame frame = guiContext.getMainFrame();
+            JOptionPane.showMessageDialog(
+                    frame,
                     "Jarida connection required.",
                     "Jarida",
                     JOptionPane.WARNING_MESSAGE
-            ));
-            focusConnectionTab();
+            );
+            // Restore focus to main window after modal dialog
+            SwingUtilities.invokeLater(() -> {
+                frame.toFront();
+                frame.requestFocus();
+                openConsole(true);
+                if (consolePanel != null) {
+                    consolePanel.selectConnectionTab();
+                }
+            });
             return;
         }
         MethodTarget target = resolveMethod(ref);
