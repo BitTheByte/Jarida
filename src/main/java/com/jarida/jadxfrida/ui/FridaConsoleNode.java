@@ -77,7 +77,7 @@ public class FridaConsoleNode extends JNode {
 
     @Override
     public boolean supportsQuickTabs() {
-        return false;
+        return true;
     }
 
     public FridaConsolePanel getPanel() {

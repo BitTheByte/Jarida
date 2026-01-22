@@ -9,6 +9,8 @@ import com.jarida.jadxfrida.model.MethodTarget;
 import com.jarida.jadxfrida.model.ReturnPatchRule;
 import com.jarida.jadxfrida.model.ScriptOptions;
 import com.jarida.jadxfrida.model.TemplatePosition;
+import com.jarida.jadxfrida.state.JaridaState;
+import com.jarida.jadxfrida.state.JaridaStateManager;
 import com.jarida.jadxfrida.ui.FridaConfigDialog;
 import com.jarida.jadxfrida.ui.FridaConsolePanel;
 import com.jarida.jadxfrida.ui.FridaConsoleNode;
@@ -31,7 +33,6 @@ import jadx.api.plugins.JadxPluginInfoBuilder;
 import jadx.api.plugins.gui.JadxGuiContext;
 import jadx.gui.ui.MainWindow;
 import jadx.gui.ui.panel.ContentPanel;
-import jadx.gui.ui.tab.TabComponent;
 import jadx.gui.ui.tab.TabbedPane;
 import jadx.gui.treemodel.JNode;
 
@@ -73,6 +74,8 @@ public class FridaTracePlugin implements JadxPlugin {
     private String customScriptPaths = "";
     private final java.util.Set<String> missingCustomScripts = new java.util.HashSet<>();
     private static final Preferences PREFS = Preferences.userRoot().node("com.jarida.jadxfrida");
+    private JaridaStateManager stateManager;
+    private boolean stateLoaded = false;
 
     @Override
     public JadxPluginInfo getPluginInfo() {
@@ -95,7 +98,9 @@ public class FridaTracePlugin implements JadxPlugin {
         context.registerOptions(pluginOptions);
         this.lastSessionConfig = pluginOptions.toSessionConfig();
         this.lastScriptOptions = pluginOptions.toScriptOptions();
+        this.stateManager = new JaridaStateManager(this::appendLog);
         loadSavedPaths();
+        loadSavedState();
         if (guiContext != null) {
             initGui();
         }
@@ -186,7 +191,6 @@ public class FridaTracePlugin implements JadxPlugin {
                         tabs.setSelectedIndex(prevIndex);
                     }
                 }
-                ensureTabComponent(tabs, consoleNode);
                 consolePanel = consoleNode.getPanel();
                 if (connectionPanel != null) {
                     String pkg = PackageNameResolver.resolvePackageName(decompiler);
@@ -212,23 +216,6 @@ public class FridaTracePlugin implements JadxPlugin {
                 JOptionPane.showMessageDialog(frame, "Unable to attach Jarida Console to Jadx UI.");
             }
         });
-    }
-
-    private void ensureTabComponent(TabbedPane tabs, FridaConsoleNode node) {
-        if (tabs == null || node == null) {
-            return;
-        }
-        ContentPanel panel = tabs.getTabByNode(node);
-        if (panel == null) {
-            return;
-        }
-        int idx = tabs.indexOfComponent(panel);
-        if (idx < 0) {
-            return;
-        }
-        if (tabs.getTabComponentAt(idx) == null) {
-            tabs.setTabComponentAt(idx, new TabComponent(tabs, panel));
-        }
     }
 
     private void selectConsoleTab(TabbedPane tabs, Object controller, JNode node, ContentPanel panel) {
@@ -328,6 +315,7 @@ public class FridaTracePlugin implements JadxPlugin {
         }
         updateHooksUi();
         updateHighlights();
+        saveCurrentState();
 
         if (!fridaController.isRunning()) {
             focusConnectionTab();
@@ -839,6 +827,7 @@ public class FridaTracePlugin implements JadxPlugin {
         record.setActive(false);
         reloadCombinedHooks();
         updateHooksUi();
+        saveCurrentState();
     }
 
     private void editHook(HookRecord record) {
@@ -898,6 +887,7 @@ public class FridaTracePlugin implements JadxPlugin {
             }
         }
         updateHighlights();
+        saveCurrentState();
     }
 
     private void jumpToHook(HookRecord record) {
@@ -924,6 +914,7 @@ public class FridaTracePlugin implements JadxPlugin {
         }
         reloadCombinedHooks();
         updateHooksUi();
+        saveCurrentState();
     }
 
     private void reloadCombinedHooks() {
@@ -1024,6 +1015,7 @@ public class FridaTracePlugin implements JadxPlugin {
         record.setActive(active);
         reloadCombinedHooks();
         updateHooksUi();
+        saveCurrentState();
     }
 
     private void setHooksActive(java.util.List<HookRecord> records, boolean active) {
@@ -1040,6 +1032,7 @@ public class FridaTracePlugin implements JadxPlugin {
         if (changed) {
             reloadCombinedHooks();
             updateHooksUi();
+            saveCurrentState();
         }
     }
 
@@ -1219,5 +1212,81 @@ public class FridaTracePlugin implements JadxPlugin {
             return FridaPluginOptions.defaultHighlightColor();
         }
         return pluginOptions.getHighlightColor();
+    }
+
+    // ========== State Persistence Methods ==========
+
+    /**
+     * Load saved Jarida state from the JADX project file.
+     */
+    private void loadSavedState() {
+        if (stateLoaded || stateManager == null || guiContext == null) {
+            return;
+        }
+        JFrame mainFrame = guiContext.getMainFrame();
+        if (mainFrame == null) {
+            return;
+        }
+        JaridaState state = stateManager.loadState(mainFrame);
+        if (state == null) {
+            return;
+        }
+        stateLoaded = true;
+        // Restore custom script paths
+        if (state.getCustomScriptPaths() != null && !state.getCustomScriptPaths().isEmpty()) {
+            customScriptPaths = state.getCustomScriptPaths();
+        }
+        // Restore hooks
+        Map<String, HookSpec> loadedSpecs = state.toHookSpecs();
+        Map<String, Boolean> activeStates = state.toActiveStates();
+        for (Map.Entry<String, HookSpec> entry : loadedSpecs.entrySet()) {
+            String hookKey = entry.getKey();
+            HookSpec spec = entry.getValue();
+            hookSpecs.put(hookKey, spec);
+            MethodTarget target = spec.getTarget();
+            String display = target != null ? target.getDisplaySignature() : hookKey;
+            HookRecord record = new HookRecord(hookKey, display, null);
+            record.setActive(activeStates.getOrDefault(hookKey, true));
+            hooks.put(hookKey, record);
+        }
+        if (!hooks.isEmpty()) {
+            appendLog("Restored " + hooks.size() + " hook(s) from project.");
+        }
+    }
+
+    /**
+     * Save the current Jarida state to the JADX project file.
+     */
+    private void saveCurrentState() {
+        if (stateManager == null || guiContext == null) {
+            return;
+        }
+        JFrame mainFrame = guiContext.getMainFrame();
+        if (mainFrame == null) {
+            return;
+        }
+        // Build active states map from hooks
+        Map<String, Boolean> activeStates = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, HookRecord> entry : hooks.entrySet()) {
+            activeStates.put(entry.getKey(), entry.getValue().isActive());
+        }
+        stateManager.saveState(mainFrame, hookSpecs, activeStates, customScriptPaths);
+    }
+
+    /**
+     * Manually trigger state save (can be called from UI).
+     */
+    public void triggerStateSave() {
+        saveCurrentState();
+    }
+
+    /**
+     * Check if a saved state exists in the current project.
+     */
+    public boolean hasSavedState() {
+        if (stateManager == null || guiContext == null) {
+            return false;
+        }
+        return stateManager.hasState(guiContext.getMainFrame());
     }
 }
