@@ -404,7 +404,7 @@ public class JaridaConnectionPanel extends JPanel {
         FridaSessionConfig cfg = new FridaSessionConfig();
         cfg.setDeviceMode((DeviceMode) deviceMode.getSelectedItem());
         AdbDevice dev = (AdbDevice) deviceList.getSelectedItem();
-        if (dev != null && isValidDeviceId(dev.getId())) {
+        if (dev != null && AdbUtil.isValidDeviceId(dev.getId())) {
             cfg.setDeviceId(dev.getId());
         }
         cfg.setRemoteHost(remoteHost.getText().trim());
@@ -455,7 +455,7 @@ public class JaridaConnectionPanel extends JPanel {
                 return null;
             }
         }
-        if (cfg.getDeviceMode() == DeviceMode.USB && !isValidDeviceId(cfg.getDeviceId())) {
+        if (cfg.getDeviceMode() == DeviceMode.USB && !AdbUtil.isValidDeviceId(cfg.getDeviceId())) {
             JOptionPane.showMessageDialog(this, "Select a valid USB device.", "Missing data", JOptionPane.ERROR_MESSAGE);
             return null;
         }
@@ -674,15 +674,4 @@ public class JaridaConnectionPanel extends JPanel {
         return false;
     }
 
-    private static boolean isValidDeviceId(String deviceId) {
-        if (deviceId == null) {
-            return false;
-        }
-        String trimmed = deviceId.trim();
-        if (trimmed.isEmpty()) {
-            return false;
-        }
-        String lower = trimmed.toLowerCase();
-        return !("loading".equals(lower) || "none".equals(lower));
-    }
 }

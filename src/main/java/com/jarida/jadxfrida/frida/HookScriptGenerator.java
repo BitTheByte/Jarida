@@ -81,14 +81,7 @@ public final class HookScriptGenerator {
             }
             return trimmed;
         }
-        if (TypeUtil.isString(returnType)) {
-            return JsEscaper.quote(trimmed);
-        }
         return JsEscaper.quote(trimmed);
-    }
-
-    private static String safe(String val) {
-        return val == null ? "" : val;
     }
 
     private static void appendExtraScriptInline(StringBuilder sb, String extraScript, String indent) {
@@ -425,11 +418,11 @@ public final class HookScriptGenerator {
         sb.append("      enabled: ").append(enabled).append(",\n");
         sb.append("      mode: ").append(JsEscaper.quote(patch == null ? "" : patch.getMode().name())).append(",\n");
         sb.append("      constValue: ").append(buildConstantLiteral(patch, target.getReturnType())).append(",\n");
-        sb.append("      expr: ").append(JsEscaper.quote(patch == null ? "" : safe(patch.getExpression()))).append(",\n");
-        sb.append("      cond: ").append(JsEscaper.quote(patch == null ? "" : safe(patch.getCondition()))).append(",\n");
-        sb.append("      thenValue: ").append(JsEscaper.quote(patch == null ? "" : safe(patch.getThenValue()))).append(",\n");
-        sb.append("      elseValue: ").append(JsEscaper.quote(patch == null ? "" : safe(patch.getElseValue()))).append(",\n");
-        sb.append("      script: ").append(JsEscaper.quote(patch == null ? "" : safe(patch.getScriptBody()))).append("\n");
+        sb.append("      expr: ").append(JsEscaper.quote(safe(patch == null ? null : patch.getExpression()))).append(",\n");
+        sb.append("      cond: ").append(JsEscaper.quote(safe(patch == null ? null : patch.getCondition()))).append(",\n");
+        sb.append("      thenValue: ").append(JsEscaper.quote(safe(patch == null ? null : patch.getThenValue()))).append(",\n");
+        sb.append("      elseValue: ").append(JsEscaper.quote(safe(patch == null ? null : patch.getElseValue()))).append(",\n");
+        sb.append("      script: ").append(JsEscaper.quote(safe(patch == null ? null : patch.getScriptBody()))).append("\n");
         sb.append("    };\n");
 
         sb.append("    var clazz").append(suffix).append(" = Java.use(TARGET_CLASS").append(suffix).append(");\n");
@@ -522,5 +515,9 @@ public final class HookScriptGenerator {
         sb.append("    }\n");
         // avoid noisy "Hooked" logs on auto-reload; extra scripts are injected per-call
         sb.append("    } catch (e) { console.log('[JARIDA] Hook error: ' + e); }\n");
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value;
     }
 }
