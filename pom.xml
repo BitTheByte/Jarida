@@ -6,7 +6,7 @@
 
     <groupId>com.jarida</groupId>
     <artifactId>jarida-jadx-plugin</artifactId>
-    <version>0.1.15</version>
+    <version>0.1.16</version>
     <name>Jarida Jadx Plugin</name>
 
     <properties>
