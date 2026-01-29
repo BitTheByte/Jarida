@@ -16,10 +16,6 @@ public final class AdbUtil {
     private AdbUtil() {
     }
 
-    public static List<AdbDevice> listDevices() {
-        return listDevices("adb");
-    }
-
     public static List<AdbDevice> listDevices(String adbPath) {
         if (adbPath == null || adbPath.trim().isEmpty()) {
             adbPath = "adb";
@@ -56,10 +52,6 @@ public final class AdbUtil {
         return result;
     }
 
-    public static ProcessResult shell(String deviceId, String command) throws IOException, InterruptedException {
-        return shell("adb", deviceId, command);
-    }
-
     public static ProcessResult shell(String adbPath, String deviceId, String command) throws IOException, InterruptedException {
         if (adbPath == null || adbPath.trim().isEmpty()) {
             adbPath = "adb";
@@ -73,6 +65,18 @@ public final class AdbUtil {
         cmd.add("shell");
         cmd.add(command);
         return ProcessUtils.run(cmd, DEFAULT_TIMEOUT_MS);
+    }
+
+    public static boolean isValidDeviceId(String deviceId) {
+        if (deviceId == null) {
+            return false;
+        }
+        String trimmed = deviceId.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        String lower = trimmed.toLowerCase();
+        return !("loading".equals(lower) || "none".equals(lower));
     }
 
     public static List<FridaProcessInfo> findProcessesByPackage(String adbPath, String deviceId, String packageName) {
