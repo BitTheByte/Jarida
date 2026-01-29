@@ -110,6 +110,23 @@ public class FridaSessionConfig {
         this.adbPath = adbPath;
     }
 
+    public FridaSessionConfig copy() {
+        FridaSessionConfig cfg = new FridaSessionConfig();
+        cfg.setDeviceMode(deviceMode);
+        cfg.setDeviceId(deviceId);
+        cfg.setRemoteHost(remoteHost);
+        cfg.setRemotePort(remotePort);
+        cfg.setSpawn(spawn);
+        cfg.setTargetPackage(targetPackage);
+        cfg.setTargetProcess(targetProcess);
+        cfg.setTargetPid(targetPid);
+        cfg.setExtraFridaArgs(extraFridaArgs);
+        cfg.setFridaPath(fridaPath);
+        cfg.setFridaPsPath(fridaPsPath);
+        cfg.setAdbPath(adbPath);
+        return cfg;
+    }
+
     public boolean isCompatibleForReuse(FridaSessionConfig other) {
         if (other == null) {
             return false;

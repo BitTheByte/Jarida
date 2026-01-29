@@ -98,7 +98,7 @@ public class FridaConfigDialog extends JDialog {
         this.fridaController = fridaController;
         this.target = target;
         this.fixedSessionConfig = fixedSessionConfig;
-        this.baseSessionConfig = cloneConfig(initialConfig);
+        this.baseSessionConfig = initialConfig.copy();
         this.showReturnTab = showReturnTab;
 
         deviceMode = new JComboBox<>(DeviceMode.values());
@@ -459,7 +459,7 @@ public class FridaConfigDialog extends JDialog {
     }
 
     private void onOk() {
-        FridaSessionConfig cfg = cloneConfig(fixedSessionConfig != null ? fixedSessionConfig : baseSessionConfig);
+        FridaSessionConfig cfg = (fixedSessionConfig != null ? fixedSessionConfig : baseSessionConfig).copy();
         if (cfg == null) {
             cfg = new FridaSessionConfig();
         }
@@ -703,32 +703,4 @@ public class FridaConfigDialog extends JDialog {
         return templateArea.getText();
     }
 
-    private static boolean isValidDeviceId(String deviceId) {
-        if (deviceId == null) {
-            return false;
-        }
-        String trimmed = deviceId.trim();
-        if (trimmed.isEmpty()) {
-            return false;
-        }
-        String lower = trimmed.toLowerCase();
-        return !("loading".equals(lower) || "none".equals(lower));
-    }
-
-    private static FridaSessionConfig cloneConfig(FridaSessionConfig src) {
-        FridaSessionConfig cfg = new FridaSessionConfig();
-        cfg.setDeviceMode(src.getDeviceMode());
-        cfg.setDeviceId(src.getDeviceId());
-        cfg.setRemoteHost(src.getRemoteHost());
-        cfg.setRemotePort(src.getRemotePort());
-        cfg.setSpawn(src.isSpawn());
-        cfg.setTargetPackage(src.getTargetPackage());
-        cfg.setTargetProcess(src.getTargetProcess());
-        cfg.setTargetPid(src.getTargetPid());
-        cfg.setExtraFridaArgs(src.getExtraFridaArgs());
-        cfg.setFridaPath(src.getFridaPath());
-        cfg.setFridaPsPath(src.getFridaPsPath());
-        cfg.setAdbPath(src.getAdbPath());
-        return cfg;
-    }
 }
