@@ -1080,6 +1080,7 @@ public class FridaTracePlugin implements JadxPlugin {
                     activeRefs.add(record.getNodeRef());
                 }
             }
+            boolean highlightAllInstances = pluginOptions != null && pluginOptions.isHighlightAllInstances();
             for (ContentPanel panel : panels) {
                 Object area = getCurrentCodeArea(panel);
                 if (area == null) {
@@ -1102,17 +1103,25 @@ public class FridaTracePlugin implements JadxPlugin {
                 }
                 Color highlight = getHookHighlightColor();
                 List<Object> tags = new ArrayList<>();
+                Set<Integer> highlightedLines = new HashSet<>();
                 for (Map.Entry<Integer, ICodeAnnotation> entry : map.entrySet()) {
                     ICodeAnnotation ann = entry.getValue();
-                    if (!(ann instanceof NodeDeclareRef)) {
+                    if (ann == null) {
                         continue;
                     }
-                    ICodeNodeRef nodeRef = ((NodeDeclareRef) ann).getNode();
-                    if (!activeRefs.contains(nodeRef)) {
+                    ICodeNodeRef nodeRef;
+                    if (highlightAllInstances) {
+                        nodeRef = extractNodeRef(ann);
+                    } else if (ann instanceof NodeDeclareRef) {
+                        nodeRef = ((NodeDeclareRef) ann).getNode();
+                    } else {
+                        continue;
+                    }
+                    if (nodeRef == null || !activeRefs.contains(nodeRef)) {
                         continue;
                     }
                     Integer line = getLineOfOffset(area, entry.getKey());
-                    if (line == null) {
+                    if (line == null || !highlightedLines.add(line)) {
                         continue;
                     }
                     Object tag = addLineHighlight(area, line, highlight);

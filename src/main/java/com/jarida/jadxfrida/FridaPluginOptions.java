@@ -14,7 +14,9 @@ import java.awt.Color;
 public class FridaPluginOptions extends BasePluginOptionsBuilder {
     private static final String PREFIX = "jarida.";
     private static final String HIGHLIGHT_COLOR_KEY = PREFIX + "traceHighlightColor";
+    private static final String HIGHLIGHT_ALL_INSTANCES_KEY = PREFIX + "traceHighlightAllInstances";
     private static final TraceHighlightColor DEFAULT_HIGHLIGHT_COLOR = TraceHighlightColor.RED;
+    private static final boolean DEFAULT_HIGHLIGHT_ALL_INSTANCES = false;
     private static final DeviceMode DEFAULT_DEVICE_MODE = DeviceMode.USB;
     private static final String DEFAULT_DEVICE_ID = "";
     private static final String DEFAULT_REMOTE_HOST = "127.0.0.1";
@@ -59,7 +61,8 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
     private String templateContent = DEFAULT_TEMPLATE_CONTENT;
     private TemplatePosition templatePosition = DEFAULT_TEMPLATE_POSITION;
     private TraceHighlightColor highlightColor = DEFAULT_HIGHLIGHT_COLOR;
-    private Runnable highlightColorChangeListener;
+    private boolean highlightAllInstances = DEFAULT_HIGHLIGHT_ALL_INSTANCES;
+    private Runnable highlightChangeListener;
 
     @Override
     public void registerOptions() {
@@ -67,6 +70,10 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
                 .description("Trace highlight color")
                 .defaultValue(DEFAULT_HIGHLIGHT_COLOR)
                 .setter(this::setHighlightColor);
+        boolOption(HIGHLIGHT_ALL_INSTANCES_KEY)
+                .description("Highlight all references to traced methods")
+                .defaultValue(DEFAULT_HIGHLIGHT_ALL_INSTANCES)
+                .setter(this::setHighlightAllInstances);
         if (deviceMode == null) {
             deviceMode = DEFAULT_DEVICE_MODE;
         }
@@ -245,8 +252,12 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
         return preset.getColor();
     }
 
+    public boolean isHighlightAllInstances() {
+        return highlightAllInstances;
+    }
+
     public void setHighlightColorChangeListener(Runnable listener) {
-        this.highlightColorChangeListener = listener;
+        this.highlightChangeListener = listener;
     }
 
     public static Color defaultHighlightColor() {
@@ -256,20 +267,25 @@ public class FridaPluginOptions extends BasePluginOptionsBuilder {
     private void setHighlightColor(TraceHighlightColor value) {
         if (value == null) {
             highlightColor = DEFAULT_HIGHLIGHT_COLOR;
-            notifyHighlightColorChange();
+            notifyHighlightChange();
             return;
         }
         highlightColor = value;
-        notifyHighlightColorChange();
+        notifyHighlightChange();
+    }
+
+    private void setHighlightAllInstances(boolean value) {
+        highlightAllInstances = value;
+        notifyHighlightChange();
     }
 
     private <T> OptionBuilder<T> hidden(OptionBuilder<T> builder) {
         return builder.flags(OptionFlag.HIDE_IN_GUI);
     }
 
-    private void notifyHighlightColorChange() {
-        if (highlightColorChangeListener != null) {
-            highlightColorChangeListener.run();
+    private void notifyHighlightChange() {
+        if (highlightChangeListener != null) {
+            highlightChangeListener.run();
         }
     }
 }
