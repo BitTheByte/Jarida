@@ -385,6 +385,10 @@ public final class HookScriptGenerator {
         ScriptOptions opt = spec.getOptions();
         ReturnPatchRule patch = spec.getReturnPatchRule();
         List<String> argTypes = target.getArgTypes();
+        List<String> overloadArgTypes = new java.util.ArrayList<>();
+        for (String argType : argTypes) {
+            overloadArgTypes.add(TypeUtil.toOverloadType(argType));
+        }
         String suffix = "_" + idx;
         String extraScript = spec.getExtraScript();
         boolean hasExtra = extraScript != null && !extraScript.trim().isEmpty();
@@ -447,11 +451,11 @@ public final class HookScriptGenerator {
             sb.append(".overload();\n");
         } else {
             sb.append(".overload(");
-            for (int i = 0; i < argTypes.size(); i++) {
+            for (int i = 0; i < overloadArgTypes.size(); i++) {
                 if (i > 0) {
                     sb.append(", ");
                 }
-                sb.append(JsEscaper.quote(argTypes.get(i)));
+                sb.append(JsEscaper.quote(overloadArgTypes.get(i)));
             }
             sb.append(");\n");
         }

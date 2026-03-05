@@ -83,4 +83,62 @@ public final class TypeUtil {
     public static boolean isString(String returnType) {
         return "java.lang.String".equals(returnType) || "String".equals(returnType);
     }
+
+    public static String toOverloadType(String typeName) {
+        if (typeName == null || typeName.isEmpty()) {
+            return "java.lang.Object";
+        }
+        String normalized = stripGenerics(typeName).trim();
+        if (normalized.isEmpty()) {
+            return "java.lang.Object";
+        }
+        if (normalized.charAt(0) == '[') {
+            // Already a JVM descriptor form.
+            return normalized;
+        }
+
+        int dimensions = 0;
+        while (normalized.endsWith("[]")) {
+            dimensions++;
+            normalized = normalized.substring(0, normalized.length() - 2);
+        }
+        if (dimensions == 0) {
+            return normalized;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < dimensions; i++) {
+            sb.append('[');
+        }
+        String primitiveDescriptor = primitiveArrayDescriptor(normalized);
+        if (primitiveDescriptor != null) {
+            sb.append(primitiveDescriptor);
+        } else {
+            sb.append('L').append(normalizeClassName(normalized)).append(';');
+        }
+        return sb.toString();
+    }
+
+    private static String primitiveArrayDescriptor(String primitive) {
+        switch (primitive) {
+            case "boolean":
+                return "Z";
+            case "byte":
+                return "B";
+            case "char":
+                return "C";
+            case "short":
+                return "S";
+            case "int":
+                return "I";
+            case "long":
+                return "J";
+            case "float":
+                return "F";
+            case "double":
+                return "D";
+            default:
+                return null;
+        }
+    }
 }
