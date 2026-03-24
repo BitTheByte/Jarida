@@ -26,8 +26,7 @@ public final class HookScriptGenerator {
         StringBuilder sb = new StringBuilder();
         sb.append("'use strict';\n");
         appendGlobalScripts(sb, globalScripts);
-        sb.append("setImmediate(function() {\n");
-        sb.append("  Java.perform(function() {\n");
+        sb.append("Java.perform(function() {\n");
         appendHelpers(sb);
         int idx = 0;
         if (specs == null || specs.isEmpty()) {
@@ -41,7 +40,6 @@ public final class HookScriptGenerator {
                 appendHook(sb, spec, idx);
             }
         }
-        sb.append("  });\n");
         sb.append("});\n");
         return sb.toString();
     }
