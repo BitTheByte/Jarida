@@ -65,7 +65,10 @@ public class FridaTracePlugin implements JadxPlugin {
     private final java.util.Map<String, HookRecord> hooks = new java.util.LinkedHashMap<>();
     private final java.util.Map<String, HookSpec> hookSpecs = new java.util.LinkedHashMap<>();
     private final Map<Object, List<Object>> highlightTags = new WeakHashMap<>();
-    private boolean highlightListenerInstalled = false;
+    private java.lang.ref.WeakReference<TabbedPane> highlightListenerOwner;
+    private int highlightRetries = 0;
+    private static final int MAX_HIGHLIGHT_RETRIES = 6;
+    private static final int HIGHLIGHT_RETRY_DELAY_MS = 250;
     private final AtomicBoolean suppressExitWarning = new AtomicBoolean(false);
 
     private FridaSessionConfig lastSessionConfig = new FridaSessionConfig();
@@ -103,13 +106,17 @@ public class FridaTracePlugin implements JadxPlugin {
         loadSavedState();
         if (guiContext != null) {
             initGui();
+            if (!hooks.isEmpty()) {
+                javax.swing.Timer initial = new javax.swing.Timer(HIGHLIGHT_RETRY_DELAY_MS, e -> updateHighlights());
+                initial.setRepeats(false);
+                initial.start();
+            }
         }
         fridaController.setOnExit(code -> {
             boolean expectedExit = suppressExitWarning.getAndSet(false);
             activeSessionConfig = null;
             if (consolePanel != null) {
                 consolePanel.setSessionActive(false);
-                consolePanel.setConnectionVisible(true);
             }
             if (connectionPanel != null) {
                 connectionPanel.setSessionActive(false);
@@ -133,14 +140,14 @@ public class FridaTracePlugin implements JadxPlugin {
                 "Jarida: Start Tracing",
                 ref -> resolveMethodForPopup(ref) != null,
                 null,
-                ref -> openSettings(ref, false, false, false, true)
+                ref -> openSettings(ref, false, false, false, false)
         );
 
         guiContext.addPopupMenuAction(
                 "Jarida: Patch Return Value",
                 ref -> resolveMethodForPopup(ref) != null,
                 null,
-                ref -> openSettings(ref, true, true, true, true)
+                ref -> openSettings(ref, true, true, true, false)
         );
 
         guiContext.addPopupMenuAction(
@@ -198,7 +205,6 @@ public class FridaTracePlugin implements JadxPlugin {
                 }
                 if (consolePanel != null) {
                     consolePanel.setSessionActive(fridaController.isRunning());
-                    consolePanel.setConnectionVisible(!fridaController.isRunning());
                     consolePanel.setCustomScripts(customScriptPaths);
                 }
                 if (consolePanel != null && !pendingLogs.isEmpty()) {
@@ -244,25 +250,6 @@ public class FridaTracePlugin implements JadxPlugin {
 
     private void openSettings(ICodeNodeRef ref, boolean patchDefault, boolean showReturnTab,
                               boolean focusReturnTab, boolean requireConnection) {
-        if (requireConnection && !fridaController.isRunning()) {
-            JFrame frame = guiContext.getMainFrame();
-            JOptionPane.showMessageDialog(
-                    frame,
-                    "Jarida connection required.",
-                    "Jarida",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            // Restore focus to main window after modal dialog
-            SwingUtilities.invokeLater(() -> {
-                frame.toFront();
-                frame.requestFocus();
-                openConsole(true);
-                if (consolePanel != null) {
-                    consolePanel.selectConnectionTab();
-                }
-            });
-            return;
-        }
         MethodTarget target = resolveMethod(ref);
         if (target == null) {
             ICodeNodeRef caretRef = guiContext.getEnclosingNodeUnderCaret();
@@ -330,7 +317,6 @@ public class FridaTracePlugin implements JadxPlugin {
             focusConnectionTab();
             if (consolePanel != null) {
                 consolePanel.setSessionActive(false);
-                consolePanel.setConnectionVisible(true);
             }
             return;
         }
@@ -339,7 +325,6 @@ public class FridaTracePlugin implements JadxPlugin {
                 fridaController.updateSessionScript(script, this::appendLog);
                 if (consolePanel != null) {
                     consolePanel.setSessionActive(true);
-                    consolePanel.setConnectionVisible(true);
                 }
             } else {
                 markExpectedExit();
@@ -347,14 +332,12 @@ public class FridaTracePlugin implements JadxPlugin {
                 activeSessionConfig = lastSessionConfig;
                 if (consolePanel != null) {
                     consolePanel.setSessionActive(true);
-                    consolePanel.setConnectionVisible(true);
                 }
             }
         } catch (Exception e) {
             showError("Failed to start Jarida session: " + e.getMessage());
             if (consolePanel != null) {
                 consolePanel.setSessionActive(false);
-                consolePanel.setConnectionVisible(true);
             }
         }
     }
@@ -599,8 +582,14 @@ public class FridaTracePlugin implements JadxPlugin {
     }
 
     private Integer getCaretPosition(Object area) {
+        if (area == null) {
+            return null;
+        }
+        java.lang.reflect.Method method = lookupMethod(area.getClass(), "getCaretPosition");
+        if (method == null) {
+            return null;
+        }
         try {
-            java.lang.reflect.Method method = area.getClass().getMethod("getCaretPosition");
             Object out = method.invoke(area);
             if (out instanceof Integer) {
                 return (Integer) out;
@@ -652,13 +641,8 @@ public class FridaTracePlugin implements JadxPlugin {
         fridaController.stop();
         activeSessionConfig = null;
         appendLog("Jarida trace stopped.");
-        hooks.clear();
-        hookSpecs.clear();
-        updateHooksUi();
-        updateHighlights();
         if (consolePanel != null) {
             consolePanel.setSessionActive(false);
-            consolePanel.setConnectionVisible(true);
         }
     }
 
@@ -800,6 +784,7 @@ public class FridaTracePlugin implements JadxPlugin {
         if (consolePanel != null) {
             consolePanel.updateHooks(new java.util.ArrayList<>(hooks.values()));
         }
+        highlightRetries = 0;
         updateHighlights();
     }
 
@@ -905,15 +890,81 @@ public class FridaTracePlugin implements JadxPlugin {
         }
         ICodeNodeRef ref = record.getNodeRef();
         if (ref == null) {
-            showWarning("No source location available for this hook.");
+            ref = resolveNodeRefFromSpec(record);
+            if (ref != null) {
+                record.setNodeRef(ref);
+            }
+        }
+        if (ref == null) {
+            showWarning("No source location available for this hook. Open the declaring class to let Jarida resolve it.");
             return;
         }
+        final ICodeNodeRef finalRef = ref;
         guiContext.uiRun(() -> {
-            boolean opened = guiContext.open(ref);
+            boolean opened = guiContext.open(finalRef);
             if (!opened) {
                 showWarning("Unable to open hook location in Jadx.");
+                return;
             }
+            highlightRetries = 0;
+            javax.swing.Timer refresh = new javax.swing.Timer(HIGHLIGHT_RETRY_DELAY_MS, e -> updateHighlights());
+            refresh.setRepeats(false);
+            refresh.start();
         });
+    }
+
+    private ICodeNodeRef resolveNodeRefFromSpec(HookRecord record) {
+        if (record == null || decompiler == null) {
+            return null;
+        }
+        HookSpec spec = hookSpecs.get(record.getKey());
+        if (spec == null || spec.getTarget() == null) {
+            return null;
+        }
+        String className = spec.getTarget().getClassName();
+        if (className == null || className.isEmpty()) {
+            return null;
+        }
+        String signature = spec.getTarget().getDisplaySignature();
+        JavaClass cls = lookupJavaClass(className);
+        if (cls == null) {
+            return null;
+        }
+        for (JavaMethod method : cls.getMethods()) {
+            if (method == null) {
+                continue;
+            }
+            MethodTarget target = MethodResolver.fromJavaMethod(method);
+            if (target != null && signature.equals(target.getDisplaySignature())) {
+                try {
+                    return method.getMethodNode();
+                } catch (Exception ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private JavaClass lookupJavaClass(String className) {
+        if (className == null || className.isEmpty() || decompiler == null) {
+            return null;
+        }
+        try {
+            JavaClass cls = decompiler.searchJavaClassByOrigFullName(className);
+            if (cls != null) {
+                return cls;
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            JavaClass cls = decompiler.searchJavaClassByAliasFullName(className);
+            if (cls != null) {
+                return cls;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private void removeAllHooks() {
@@ -1046,16 +1097,24 @@ public class FridaTracePlugin implements JadxPlugin {
     }
 
     private void installHighlightListener() {
-        if (highlightListenerInstalled || guiContext == null) {
+        if (guiContext == null) {
             return;
         }
         guiContext.uiRun(() -> {
             JFrame frame = guiContext.getMainFrame();
-            if (frame instanceof MainWindow) {
-                TabbedPane tabs = ((MainWindow) frame).getTabbedPane();
-                tabs.addChangeListener(e -> updateHighlights());
-                highlightListenerInstalled = true;
+            if (!(frame instanceof MainWindow)) {
+                return;
             }
+            TabbedPane tabs = ((MainWindow) frame).getTabbedPane();
+            if (tabs == null) {
+                return;
+            }
+            TabbedPane existing = highlightListenerOwner != null ? highlightListenerOwner.get() : null;
+            if (existing == tabs) {
+                return;
+            }
+            tabs.addChangeListener(e -> updateHighlights());
+            highlightListenerOwner = new java.lang.ref.WeakReference<>(tabs);
         });
     }
 
@@ -1064,37 +1123,52 @@ public class FridaTracePlugin implements JadxPlugin {
             return;
         }
         Runnable task = () -> {
+            installHighlightListener();
             clearAllHighlights();
             JFrame frame = guiContext.getMainFrame();
             if (!(frame instanceof MainWindow)) {
                 return;
             }
             TabbedPane tabs = ((MainWindow) frame).getTabbedPane();
+            if (tabs == null) {
+                return;
+            }
             List<ContentPanel> panels = tabs.getTabs();
             if (panels == null) {
                 return;
             }
             Set<ICodeNodeRef> activeRefs = new HashSet<>();
+            Map<String, HookRecord> activeBySignature = new java.util.HashMap<>();
             for (HookRecord record : hooks.values()) {
-                if (record.isActive() && record.getNodeRef() != null) {
+                if (!record.isActive()) {
+                    continue;
+                }
+                if (record.getNodeRef() != null) {
                     activeRefs.add(record.getNodeRef());
                 }
+                activeBySignature.put(record.getKey(), record);
+            }
+            if (activeBySignature.isEmpty()) {
+                highlightRetries = 0;
+                return;
             }
             boolean highlightAllInstances = pluginOptions != null && pluginOptions.isHighlightAllInstances();
+            boolean metadataPending = false;
+            boolean anyPanelSeen = false;
             for (ContentPanel panel : panels) {
                 Object area = getCurrentCodeArea(panel);
                 if (area == null) {
                     continue;
                 }
-                if (activeRefs.isEmpty()) {
-                    continue;
-                }
+                anyPanelSeen = true;
                 ICodeInfo codeInfo = getCodeInfo(area);
                 if (codeInfo == null || !codeInfo.hasMetadata()) {
+                    metadataPending = true;
                     continue;
                 }
                 ICodeMetadata metadata = codeInfo.getCodeMetadata();
                 if (metadata == null) {
+                    metadataPending = true;
                     continue;
                 }
                 Map<Integer, ICodeAnnotation> map = metadata.getAsMap();
@@ -1104,20 +1178,43 @@ public class FridaTracePlugin implements JadxPlugin {
                 Color highlight = getHookHighlightColor();
                 List<Object> tags = new ArrayList<>();
                 Set<Integer> highlightedLines = new HashSet<>();
+                Map<ICodeNodeRef, Boolean> resolvedCache = new java.util.HashMap<>();
                 for (Map.Entry<Integer, ICodeAnnotation> entry : map.entrySet()) {
                     ICodeAnnotation ann = entry.getValue();
                     if (ann == null) {
                         continue;
                     }
-                    ICodeNodeRef nodeRef;
-                    if (highlightAllInstances) {
-                        nodeRef = extractNodeRef(ann);
-                    } else if (ann instanceof NodeDeclareRef) {
-                        nodeRef = ((NodeDeclareRef) ann).getNode();
-                    } else {
+                    ICodeNodeRef nodeRef = extractNodeRef(ann);
+                    if (nodeRef == null) {
                         continue;
                     }
-                    if (nodeRef == null || !activeRefs.contains(nodeRef)) {
+                    boolean isDeclaration = ann instanceof NodeDeclareRef;
+                    if (!highlightAllInstances && !isDeclaration) {
+                        continue;
+                    }
+                    boolean matches = activeRefs.contains(nodeRef);
+                    if (!matches) {
+                        Boolean cached = resolvedCache.get(nodeRef);
+                        if (Boolean.TRUE.equals(cached)) {
+                            matches = true;
+                        } else if (cached == null) {
+                            MethodTarget resolved = MethodResolver.resolve(decompiler, nodeRef);
+                            boolean matched = false;
+                            if (resolved != null) {
+                                HookRecord pending = activeBySignature.get(resolved.getDisplaySignature());
+                                if (pending != null) {
+                                    if (pending.getNodeRef() != nodeRef) {
+                                        pending.setNodeRef(nodeRef);
+                                    }
+                                    activeRefs.add(nodeRef);
+                                    matched = true;
+                                }
+                            }
+                            resolvedCache.put(nodeRef, matched);
+                            matches = matched;
+                        }
+                    }
+                    if (!matches) {
                         continue;
                     }
                     Integer line = getLineOfOffset(area, entry.getKey());
@@ -1133,21 +1230,19 @@ public class FridaTracePlugin implements JadxPlugin {
                     highlightTags.put(area, tags);
                 }
             }
+            if ((metadataPending || !anyPanelSeen) && highlightRetries < MAX_HIGHLIGHT_RETRIES) {
+                highlightRetries++;
+                javax.swing.Timer timer = new javax.swing.Timer(HIGHLIGHT_RETRY_DELAY_MS, e -> updateHighlights());
+                timer.setRepeats(false);
+                timer.start();
+            } else {
+                highlightRetries = 0;
+            }
         };
         if (SwingUtilities.isEventDispatchThread()) {
             task.run();
         } else {
             guiContext.uiRun(task);
-        }
-    }
-
-    private void clearHighlights(Object area) {
-        List<Object> tags = highlightTags.remove(area);
-        if (tags == null) {
-            return;
-        }
-        for (Object tag : tags) {
-            removeLineHighlight(area, tag);
         }
     }
 
@@ -1169,12 +1264,40 @@ public class FridaTracePlugin implements JadxPlugin {
         }
     }
 
+    private final java.util.concurrent.ConcurrentMap<String, java.lang.reflect.Method> reflectionCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Set<String> reflectionMissReported = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
+    private java.lang.reflect.Method lookupMethod(Class<?> cls, String name, Class<?>... params) {
+        if (cls == null) {
+            return null;
+        }
+        String key = cls.getName() + "#" + name;
+        java.lang.reflect.Method cached = reflectionCache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        try {
+            java.lang.reflect.Method m = cls.getMethod(name, params);
+            reflectionCache.put(key, m);
+            return m;
+        } catch (NoSuchMethodException e) {
+            if (reflectionMissReported.add(key)) {
+                appendLog("Jarida: jadx API method missing: " + cls.getSimpleName() + "." + name
+                        + " — highlight/code-area features may be degraded.");
+            }
+            return null;
+        }
+    }
+
     private Object getCurrentCodeArea(ContentPanel panel) {
         if (panel == null) {
             return null;
         }
+        java.lang.reflect.Method method = lookupMethod(panel.getClass(), "getCurrentCodeArea");
+        if (method == null) {
+            return null;
+        }
         try {
-            java.lang.reflect.Method method = panel.getClass().getMethod("getCurrentCodeArea");
             return method.invoke(panel);
         } catch (Exception ignored) {
             return null;
@@ -1185,8 +1308,11 @@ public class FridaTracePlugin implements JadxPlugin {
         if (area == null) {
             return null;
         }
+        java.lang.reflect.Method method = lookupMethod(area.getClass(), "getCodeInfo");
+        if (method == null) {
+            return null;
+        }
         try {
-            java.lang.reflect.Method method = area.getClass().getMethod("getCodeInfo");
             Object out = method.invoke(area);
             if (out instanceof ICodeInfo) {
                 return (ICodeInfo) out;
@@ -1197,8 +1323,14 @@ public class FridaTracePlugin implements JadxPlugin {
     }
 
     private Integer getLineOfOffset(Object area, int offset) {
+        if (area == null) {
+            return null;
+        }
+        java.lang.reflect.Method method = lookupMethod(area.getClass(), "getLineOfOffset", int.class);
+        if (method == null) {
+            return null;
+        }
         try {
-            java.lang.reflect.Method method = area.getClass().getMethod("getLineOfOffset", int.class);
             Object out = method.invoke(area, offset);
             if (out instanceof Integer) {
                 return (Integer) out;
@@ -1209,8 +1341,14 @@ public class FridaTracePlugin implements JadxPlugin {
     }
 
     private Object addLineHighlight(Object area, int line, Color color) {
+        if (area == null) {
+            return null;
+        }
+        java.lang.reflect.Method method = lookupMethod(area.getClass(), "addLineHighlight", int.class, Color.class);
+        if (method == null) {
+            return null;
+        }
         try {
-            java.lang.reflect.Method method = area.getClass().getMethod("addLineHighlight", int.class, Color.class);
             return method.invoke(area, line, color);
         } catch (Exception ignored) {
             return null;
@@ -1218,8 +1356,14 @@ public class FridaTracePlugin implements JadxPlugin {
     }
 
     private void removeLineHighlight(Object area, Object tag) {
+        if (area == null) {
+            return;
+        }
+        java.lang.reflect.Method method = lookupMethod(area.getClass(), "removeLineHighlight", Object.class);
+        if (method == null) {
+            return;
+        }
         try {
-            java.lang.reflect.Method method = area.getClass().getMethod("removeLineHighlight", Object.class);
             method.invoke(area, tag);
         } catch (Exception ignored) {
         }
@@ -1291,20 +1435,4 @@ public class FridaTracePlugin implements JadxPlugin {
         stateManager.saveState(mainFrame, hookSpecs, activeStates, customScriptPaths);
     }
 
-    /**
-     * Manually trigger state save (can be called from UI).
-     */
-    public void triggerStateSave() {
-        saveCurrentState();
-    }
-
-    /**
-     * Check if a saved state exists in the current project.
-     */
-    public boolean hasSavedState() {
-        if (stateManager == null || guiContext == null) {
-            return false;
-        }
-        return stateManager.hasState(guiContext.getMainFrame());
-    }
 }

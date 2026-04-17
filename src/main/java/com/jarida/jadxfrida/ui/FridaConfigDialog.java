@@ -261,7 +261,10 @@ public class FridaConfigDialog extends JDialog {
         c.fill = GridBagConstraints.HORIZONTAL;
         panel.add(deviceList, c);
         JButton refreshDevices = new JButton("Refresh devices");
-        refreshDevices.addActionListener(e -> refreshDevices());
+        refreshDevices.addActionListener(e -> {
+            refreshDevices.setEnabled(false);
+            refreshDevicesAsync(() -> refreshDevices.setEnabled(true));
+        });
         c.gridx = 2;
         c.weightx = 0;
         c.fill = GridBagConstraints.NONE;
@@ -317,7 +320,10 @@ public class FridaConfigDialog extends JDialog {
         c.fill = GridBagConstraints.HORIZONTAL;
         panel.add(processList, c);
         JButton refreshProc = new JButton("Refresh processes");
-        refreshProc.addActionListener(e -> refreshProcesses());
+        refreshProc.addActionListener(e -> {
+            refreshProc.setEnabled(false);
+            refreshProcessesAsync(() -> refreshProc.setEnabled(true));
+        });
         c.gridx = 2;
         c.weightx = 0;
         c.fill = GridBagConstraints.NONE;
@@ -333,7 +339,10 @@ public class FridaConfigDialog extends JDialog {
         c.fill = GridBagConstraints.HORIZONTAL;
         panel.add(pidField, c);
         JButton detectPid = new JButton("Find PID (ADB)");
-        detectPid.addActionListener(e -> detectPidFromAdb());
+        detectPid.addActionListener(e -> {
+            detectPid.setEnabled(false);
+            detectPidFromAdb(() -> detectPid.setEnabled(true));
+        });
         c.gridx = 2;
         c.weightx = 0;
         c.fill = GridBagConstraints.NONE;
@@ -388,7 +397,10 @@ public class FridaConfigDialog extends JDialog {
         c.gridwidth = 1;
 
         JButton checkBtn = new JButton("Check connectivity");
-        checkBtn.addActionListener(e -> checkConnectivity());
+        checkBtn.addActionListener(e -> {
+            checkBtn.setEnabled(false);
+            checkConnectivity(() -> checkBtn.setEnabled(true));
+        });
         c.gridx = 0;
         c.gridy++;
         c.weightx = 0;
@@ -498,37 +510,44 @@ public class FridaConfigDialog extends JDialog {
     }
 
     private void refreshDevices() {
-        refreshDevicesAsync();
+        refreshDevicesAsync(null);
     }
 
     private void refreshProcesses() {
-        refreshProcessesAsync();
+        refreshProcessesAsync(null);
     }
 
-    private void refreshDevicesAsync() {
+    private void refreshDevicesAsync(Runnable onDone) {
         deviceList.removeAllItems();
         deviceList.addItem(new AdbDevice("loading", "loading", "loading..."));
         new Thread(() -> {
-            List<AdbDevice> devices = AdbUtil.listDevices(adbPath.getText().trim());
-            SwingUtilities.invokeLater(() -> {
-                deviceList.removeAllItems();
-                for (AdbDevice device : devices) {
-                    deviceList.addItem(device);
+            try {
+                List<AdbDevice> devices = AdbUtil.listDevices(adbPath.getText().trim());
+                SwingUtilities.invokeLater(() -> {
+                    deviceList.removeAllItems();
+                    for (AdbDevice device : devices) {
+                        deviceList.addItem(device);
+                    }
+                    if (devices.isEmpty()) {
+                        deviceList.addItem(new AdbDevice("none", "none", "No devices"));
+                    }
+                    if (attachRadio.isSelected()) {
+                        refreshProcessesAsync(null);
+                    }
+                });
+            } finally {
+                if (onDone != null) {
+                    SwingUtilities.invokeLater(onDone);
                 }
-                if (devices.isEmpty()) {
-                    deviceList.addItem(new AdbDevice("none", "none", "No devices"));
-                }
-                if (attachRadio.isSelected()) {
-                    refreshProcessesAsync();
-                }
-            });
+            }
         }, "frida-devices").start();
     }
 
-    private void refreshProcessesAsync() {
+    private void refreshProcessesAsync(Runnable onDone) {
         processList.removeAllItems();
         processList.addItem(new FridaProcessInfo(-1, "loading..."));
         new Thread(() -> {
+            try {
             FridaSessionConfig cfg = new FridaSessionConfig();
             cfg.setDeviceMode((DeviceMode) deviceMode.getSelectedItem());
             AdbDevice dev = (AdbDevice) deviceList.getSelectedItem();
@@ -582,43 +601,63 @@ public class FridaConfigDialog extends JDialog {
                     }
                 }
             });
+            } finally {
+                if (onDone != null) {
+                    SwingUtilities.invokeLater(onDone);
+                }
+            }
         }, "frida-processes").start();
     }
 
     private void detectPidFromAdb() {
+        detectPidFromAdb(null);
+    }
+
+    private void detectPidFromAdb(Runnable onDone) {
         statusArea.setText("");
         new Thread(() -> {
-            String pkg = targetPackage.getText().trim();
-            if (pkg.isEmpty()) {
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Target package is empty.", "Missing data", JOptionPane.WARNING_MESSAGE));
-                return;
+            try {
+                String pkg = targetPackage.getText().trim();
+                if (pkg.isEmpty()) {
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Target package is empty.", "Missing data", JOptionPane.WARNING_MESSAGE));
+                    return;
+                }
+                DeviceMode mode = (DeviceMode) deviceMode.getSelectedItem();
+                if (mode != DeviceMode.USB) {
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "ADB PID detection is only available in USB mode.", "Not available", JOptionPane.WARNING_MESSAGE));
+                    return;
+                }
+                AdbDevice dev = (AdbDevice) deviceList.getSelectedItem();
+                if (dev == null) {
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "No USB device selected.", "Missing data", JOptionPane.WARNING_MESSAGE));
+                    return;
+                }
+                List<FridaProcessInfo> procs = AdbUtil.findProcessesByPackage(adbPath.getText().trim(), dev.getId(), pkg);
+                if (procs.isEmpty()) {
+                    SwingUtilities.invokeLater(() -> statusArea.setText("ADB: no running process found for " + pkg));
+                    return;
+                }
+                FridaProcessInfo first = procs.get(0);
+                SwingUtilities.invokeLater(() -> {
+                    pidField.setText(String.valueOf(first.getPid()));
+                    statusArea.setText("ADB: found PID " + first.getPid() + " (" + first.getName() + ")");
+                });
+            } finally {
+                if (onDone != null) {
+                    SwingUtilities.invokeLater(onDone);
+                }
             }
-            DeviceMode mode = (DeviceMode) deviceMode.getSelectedItem();
-            if (mode != DeviceMode.USB) {
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "ADB PID detection is only available in USB mode.", "Not available", JOptionPane.WARNING_MESSAGE));
-                return;
-            }
-            AdbDevice dev = (AdbDevice) deviceList.getSelectedItem();
-            if (dev == null) {
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "No USB device selected.", "Missing data", JOptionPane.WARNING_MESSAGE));
-                return;
-            }
-            List<FridaProcessInfo> procs = AdbUtil.findProcessesByPackage(adbPath.getText().trim(), dev.getId(), pkg);
-            if (procs.isEmpty()) {
-                SwingUtilities.invokeLater(() -> statusArea.setText("ADB: no running process found for " + pkg));
-                return;
-            }
-            FridaProcessInfo first = procs.get(0);
-            SwingUtilities.invokeLater(() -> {
-                pidField.setText(String.valueOf(first.getPid()));
-                statusArea.setText("ADB: found PID " + first.getPid() + " (" + first.getName() + ")");
-            });
         }, "frida-adb-pid").start();
     }
 
     private void checkConnectivity() {
-        statusArea.setText("");
+        checkConnectivity(null);
+    }
+
+    private void checkConnectivity(Runnable onDone) {
+        statusArea.setText("Checking...");
         new Thread(() -> {
+            try {
             StringBuilder sb = new StringBuilder();
             String fridaVersion = fridaController.getFridaVersion(fridaPath.getText().trim());
             if (fridaVersion.isEmpty()) {
@@ -658,6 +697,11 @@ public class FridaConfigDialog extends JDialog {
                         .append(remoteHost.getText().trim()).append(":").append(remotePort.getText().trim()).append("\n");
             }
             SwingUtilities.invokeLater(() -> statusArea.setText(sb.toString()));
+            } finally {
+                if (onDone != null) {
+                    SwingUtilities.invokeLater(onDone);
+                }
+            }
         }, "frida-check").start();
     }
 

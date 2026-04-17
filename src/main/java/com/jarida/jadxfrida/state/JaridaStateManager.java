@@ -616,10 +616,10 @@ public class JaridaStateManager {
 
         boolean parseBoolean() {
             skipWhitespace();
-            if (json.substring(pos).startsWith("true")) {
+            if (json.regionMatches(pos, "true", 0, 4)) {
                 pos += 4;
                 return true;
-            } else if (json.substring(pos).startsWith("false")) {
+            } else if (json.regionMatches(pos, "false", 0, 5)) {
                 pos += 5;
                 return false;
             }
@@ -628,7 +628,7 @@ public class JaridaStateManager {
 
         boolean checkNull() {
             skipWhitespace();
-            if (json.substring(pos).startsWith("null")) {
+            if (json.regionMatches(pos, "null", 0, 4)) {
                 pos += 4;
                 return true;
             }

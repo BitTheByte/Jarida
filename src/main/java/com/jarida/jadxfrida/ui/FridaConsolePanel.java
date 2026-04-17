@@ -65,7 +65,6 @@ public class FridaConsolePanel extends ContentPanel {
     private final JaridaConnectionPanel connectionPanel;
     private final String version;
     private final JTabbedPane tabs;
-    private boolean connectionVisible;
     private final Consumer<String> onCustomScriptsChanged;
     private final Consumer<String> onCustomScriptsSaved;
     private final CustomScriptsTableModel customScriptsModel = new CustomScriptsTableModel();
@@ -114,7 +113,6 @@ public class FridaConsolePanel extends ContentPanel {
         tabs = new JTabbedPane();
         if (connectionPanel != null) {
             tabs.addTab("Connection", connectionPanel);
-            connectionVisible = true;
         }
         tabs.addTab("Console", buildConsolePanel());
         tabs.addTab("Hooks", buildHooksPanel());
@@ -162,9 +160,28 @@ public class FridaConsolePanel extends ContentPanel {
                 maybeShowHookMenu(e);
             }
 
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1) {
+                    int row = hooksTable.rowAtPoint(e.getPoint());
+                    if (row < 0) {
+                        return;
+                    }
+                    int col = hooksTable.columnAtPoint(e.getPoint());
+                    if (col == 0) {
+                        return;
+                    }
+                    jumpToSelectedHook();
+                }
+            }
+
             private void maybeShowHookMenu(MouseEvent e) {
                 if (!e.isPopupTrigger()) {
                     return;
+                }
+                int row = hooksTable.rowAtPoint(e.getPoint());
+                if (row >= 0 && !hooksTable.isRowSelected(row)) {
+                    hooksTable.setRowSelectionInterval(row, row);
                 }
                 hooksMenu.show(e.getComponent(), e.getX(), e.getY());
             }
@@ -176,7 +193,16 @@ public class FridaConsolePanel extends ContentPanel {
         disableAll.addActionListener(e -> setAllHooksActive(false));
         JButton removeAll = new JButton("Remove All");
         removeAll.addActionListener(e -> {
-            if (onRemoveAll != null) {
+            if (onRemoveAll == null) {
+                return;
+            }
+            int choice = JOptionPane.showConfirmDialog(
+                    this,
+                    "Remove all hooks? This cannot be undone.",
+                    "Confirm Remove All",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.WARNING_MESSAGE);
+            if (choice == JOptionPane.OK_OPTION) {
                 onRemoveAll.run();
             }
         });
@@ -471,19 +497,6 @@ public class FridaConsolePanel extends ContentPanel {
         }
     }
 
-    public void appendScript(String script) {
-        SwingUtilities.invokeLater(() -> {
-            String current = scriptArea.getText();
-            if (current == null || current.isEmpty()) {
-                scriptArea.setText(script == null ? "" : script);
-            } else {
-                scriptArea.append("\n\n// ---- Additional hook ----\n\n");
-                scriptArea.append(script == null ? "" : script);
-            }
-            scriptArea.setCaretPosition(scriptArea.getDocument().getLength());
-        });
-    }
-
     public void updateHooks(List<HookRecord> hooks) {
         SwingUtilities.invokeLater(() -> {
             hooksModel.setHooks(hooks);
@@ -554,7 +567,10 @@ public class FridaConsolePanel extends ContentPanel {
         JButton clearButton = new JButton("Clear");
         clearButton.addActionListener(e -> clearLog());
         JButton copyLog = new JButton("Copy Log");
-        copyLog.addActionListener(e -> copyToClipboard(logArea.getText()));
+        copyLog.addActionListener(e -> {
+            copyToClipboard(logArea.getText());
+            flashButton(copyLog, "Copied");
+        });
         toolBar.add(clearButton);
         toolBar.add(copyLog);
         panel.add(toolBar, BorderLayout.NORTH);
@@ -585,7 +601,10 @@ public class FridaConsolePanel extends ContentPanel {
         JToolBar toolBar = new JToolBar();
         toolBar.setFloatable(false);
         JButton copyScript = new JButton("Copy Script");
-        copyScript.addActionListener(e -> copyToClipboard(scriptArea.getText()));
+        copyScript.addActionListener(e -> {
+            copyToClipboard(scriptArea.getText());
+            flashButton(copyScript, "Copied");
+        });
         toolBar.add(copyScript);
         generatedPanel.add(toolBar, BorderLayout.NORTH);
         generatedPanel.add(new JScrollPane(scriptArea), BorderLayout.CENTER);
@@ -611,7 +630,20 @@ public class FridaConsolePanel extends ContentPanel {
         header.add(addFiles, hc);
         hc.gridx++;
         JButton clearFiles = new JButton("Clear");
-        clearFiles.addActionListener(e -> customScriptsModel.setEntries(new ArrayList<>()));
+        clearFiles.addActionListener(e -> {
+            if (customScriptsModel.getEntries().isEmpty()) {
+                return;
+            }
+            int choice = JOptionPane.showConfirmDialog(
+                    this,
+                    "Remove all custom script entries?",
+                    "Confirm Clear",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.WARNING_MESSAGE);
+            if (choice == JOptionPane.OK_OPTION) {
+                customScriptsModel.setEntries(new ArrayList<>());
+            }
+        });
         header.add(clearFiles, hc);
 
         JButton removeSelected = new JButton("Remove Selected");
@@ -639,7 +671,10 @@ public class FridaConsolePanel extends ContentPanel {
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JButton saveCustom = new JButton("Save Custom Scripts");
-        saveCustom.addActionListener(e -> saveCustomScripts());
+        saveCustom.addActionListener(e -> {
+            saveCustomScripts();
+            flashButton(saveCustom, "Saved");
+        });
         actions.add(saveCustom);
 
         customPanel.add(pathsPanel, BorderLayout.CENTER);
@@ -959,21 +994,6 @@ public class FridaConsolePanel extends ContentPanel {
         }
     }
 
-    public void setConnectionVisible(boolean visible) {
-        // Connection tab is always visible; indicator is updated via setSessionActive().
-        if (connectionPanel == null) {
-            return;
-        }
-        if (!connectionVisible) {
-            SwingUtilities.invokeLater(() -> {
-                if (!connectionVisible) {
-                    tabs.insertTab("Connection", null, connectionPanel, null, 0);
-                    connectionVisible = true;
-                }
-            });
-        }
-    }
-
     public void selectConnectionTab() {
         if (connectionPanel == null) {
             return;
@@ -991,6 +1011,22 @@ public class FridaConsolePanel extends ContentPanel {
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
         } catch (Exception ignored) {
         }
+    }
+
+    private void flashButton(JButton button, String confirmation) {
+        if (button == null) {
+            return;
+        }
+        String original = button.getText();
+        boolean wasEnabled = button.isEnabled();
+        button.setText(confirmation);
+        button.setEnabled(false);
+        javax.swing.Timer timer = new javax.swing.Timer(700, e -> {
+            button.setText(original);
+            button.setEnabled(wasEnabled);
+        });
+        timer.setRepeats(false);
+        timer.start();
     }
 
     @Override

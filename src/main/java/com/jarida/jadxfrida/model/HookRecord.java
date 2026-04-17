@@ -6,9 +6,7 @@ public class HookRecord {
     private final String key;
     private final String display;
     private ICodeNodeRef nodeRef;
-    private int scriptId = -1;
     private boolean active = true;
-    private boolean pendingUnload = false;
 
     public HookRecord(String key, String display, ICodeNodeRef nodeRef) {
         this.key = key;
@@ -32,14 +30,6 @@ public class HookRecord {
         this.nodeRef = nodeRef;
     }
 
-    public int getScriptId() {
-        return scriptId;
-    }
-
-    public void setScriptId(int scriptId) {
-        this.scriptId = scriptId;
-    }
-
     public boolean isActive() {
         return active;
     }
@@ -48,25 +38,8 @@ public class HookRecord {
         this.active = active;
     }
 
-    public boolean isPendingUnload() {
-        return pendingUnload;
-    }
-
-    public void setPendingUnload(boolean pendingUnload) {
-        this.pendingUnload = pendingUnload;
-    }
-
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append(display);
-        if (pendingUnload) {
-            sb.append(" [pending remove]");
-        } else if (active) {
-            sb.append(" [active]");
-        } else {
-            sb.append(" [inactive]");
-        }
-        return sb.toString();
+        return display + (active ? " [active]" : " [inactive]");
     }
 }

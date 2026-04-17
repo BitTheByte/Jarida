@@ -456,15 +456,6 @@ public class FridaController {
         return args;
     }
 
-    private boolean isNoPauseUnsupported(String line) {
-        if (line == null) {
-            return false;
-        }
-        String lower = line.toLowerCase();
-        return (lower.contains("unrecognized arguments") || lower.contains("no such option") || lower.contains("unknown option"))
-                && lower.contains("--no-pause");
-    }
-
     private void cleanupTempScripts() {
         for (Path path : tempScripts) {
             try {
@@ -475,28 +466,17 @@ public class FridaController {
         tempScripts.clear();
     }
 
-    private void sendCommand(String command, Consumer<String> log) throws IOException {
-        if (process == null) {
+    private synchronized void sendCommand(String command, Consumer<String> log) throws IOException {
+        Process current = process;
+        if (current == null || !current.isAlive()) {
             throw new IOException("Frida process not running");
         }
-        OutputStream os = process.getOutputStream();
+        OutputStream os = current.getOutputStream();
         os.write((command + "\n").getBytes(StandardCharsets.UTF_8));
         os.flush();
         if (log != null) {
             log.accept("Frida cmd: " + command);
         }
-    }
-
-
-    private String formatPathForFrida(File scriptFile) {
-        String path = scriptFile.getAbsolutePath();
-        if (File.separatorChar == '\\') {
-            path = path.replace('\\', '/');
-        }
-        if (path.contains(" ")) {
-            return "\"" + path + "\"";
-        }
-        return path;
     }
 
     private boolean isExecutableAvailable(String path) {
