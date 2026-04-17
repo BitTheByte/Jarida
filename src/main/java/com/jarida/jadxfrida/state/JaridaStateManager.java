@@ -38,7 +38,6 @@ public class JaridaStateManager {
             project.updatePluginOptions(options -> {
                 options.put(PLUGIN_KEY, json);
             });
-            logger.accept("Jarida state saved to project.");
             return true;
         } catch (Exception e) {
             logger.accept("Failed to save Jarida state: " + e.getMessage());

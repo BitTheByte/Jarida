@@ -1268,6 +1268,10 @@ public class FridaTracePlugin implements JadxPlugin {
     private final java.util.Set<String> reflectionMissReported = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
 
     private java.lang.reflect.Method lookupMethod(Class<?> cls, String name, Class<?>... params) {
+        return lookupMethod(cls, name, true, params);
+    }
+
+    private java.lang.reflect.Method lookupMethod(Class<?> cls, String name, boolean reportMissing, Class<?>... params) {
         if (cls == null) {
             return null;
         }
@@ -1281,7 +1285,7 @@ public class FridaTracePlugin implements JadxPlugin {
             reflectionCache.put(key, m);
             return m;
         } catch (NoSuchMethodException e) {
-            if (reflectionMissReported.add(key)) {
+            if (reportMissing && reflectionMissReported.add(key)) {
                 appendLog("Jarida: jadx API method missing: " + cls.getSimpleName() + "." + name
                         + " — highlight/code-area features may be degraded.");
             }
@@ -1293,7 +1297,9 @@ public class FridaTracePlugin implements JadxPlugin {
         if (panel == null) {
             return null;
         }
-        java.lang.reflect.Method method = lookupMethod(panel.getClass(), "getCurrentCodeArea");
+        // Not all ContentPanel subclasses (e.g. our own FridaConsolePanel) expose
+        // getCurrentCodeArea — absence here is expected, not a jadx API drift signal.
+        java.lang.reflect.Method method = lookupMethod(panel.getClass(), "getCurrentCodeArea", false);
         if (method == null) {
             return null;
         }
